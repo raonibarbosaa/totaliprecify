@@ -13,15 +13,6 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-window.onerror = function(msg, src, line, col, err) {
-  console.error('[GLOBAL ERROR]', msg, 'linha:', line, 'col:', col);
-  alert('ERRO ENCONTRADO:\n' + msg + '\nLinha: ' + line);
-  return false;
-};
-window.addEventListener('unhandledrejection', function(e){
-  console.error('[PROMISE ERROR]', e.reason);
-  alert('ERRO PROMISE:\n' + e.reason);
-});
 firebase.initializeApp({
   apiKey: "AIzaSyBagzNfYn0p1VBavrYGZ3IV9kXxhiSt5OI",
   authDomain: "totali-precify.firebaseapp.com",
@@ -345,19 +336,16 @@ function hideLs(){
 firebase.auth().onAuthStateChanged(function(user){
   if(user){
     currentUser=user;
-    console.log('[DEBUG] Usuario autenticado:', user.email);
     db.collection('users').doc(user.uid).set({email:user.email},{merge:true})
       .then(function(){console.log('[DEBUG] Email salvo no Firestore');})
       .catch(function(e){console.error('[DEBUG] Erro ao salvar email:',e);});
     loadUserEmpresas().then(function(){
-      console.log('[DEBUG] Empresas carregadas:',empresas.length,'curEmpresaId:',curEmpresaId);
       hideLs();
       document.getElementById('auth-screen').style.display='none';
       document.getElementById('app').style.display='flex';
       try{ren();}catch(e){console.error('[DEBUG] Erro no ren():',e);}
       checkBloqueado();
     }).catch(function(e){
-      console.error('[DEBUG] Erro no loadUserEmpresas:',e);
       hideLs();
       document.getElementById('auth-screen').style.display='none';
       document.getElementById('app').style.display='flex';
@@ -519,17 +507,13 @@ async function loadUserEmpresas(){
   try{
     var userDoc=await db.collection('users').doc(currentUser.uid).get();
     if(!userDoc.exists){
-      console.log('[DEBUG] Usuario sem doc no Firestore');
       return;
     }
     var userData=userDoc.data();
-    console.log('[DEBUG] userData keys:',Object.keys(userData));
     var empresaAtiva=userData.empresaAtiva||null;
     var empresasIds=userData.empresasIds;
     if(!Array.isArray(empresasIds))empresasIds=[];
-    console.log('[DEBUG] empresasIds:',empresasIds,'empresaAtiva:',empresaAtiva);
     if(empresasIds.length===0){
-      console.log('[DEBUG] Sem empresas cadastradas');
       return;
     }
     for(var i=0;i<empresasIds.length;i++){
@@ -537,10 +521,8 @@ async function loadUserEmpresas(){
         var empDoc=await db.collection('empresas').doc(empresasIds[i]).get();
         if(empDoc.exists){
           empresas.push(Object.assign({id:empDoc.id},empDoc.data()));
-          console.log('[DEBUG] Empresa carregada:',empDoc.id);
         }
       }catch(e2){
-        console.warn('[DEBUG] Erro ao carregar empresa:',empresasIds[i],e2.message);
       }
     }
     if(empresas.length===0){console.log('[DEBUG] Nenhuma empresa acessível');return;}
@@ -550,7 +532,6 @@ async function loadUserEmpresas(){
       await db.collection('users').doc(currentUser.uid).set({empresaAtiva:idParaCarregar},{merge:true});
     }
   }catch(e){
-    console.error('[DEBUG] loadUserEmpresas ERRO:',e.message,e.code);
   }
 }
 
@@ -584,7 +565,6 @@ function updateEmpresaSelector(){
 function ren(){
   var el=document.getElementById('main');
   if(!el)return;
-  console.log('[DEBUG] ren() curPage:',curPage,'curEmpresaId:',curEmpresaId,'empresas:',empresas.length);
   var btnAdmin=document.getElementById('btn-admin');
   if(btnAdmin)btnAdmin.style.display=isAdmin()?'inline-flex':'none';
 
@@ -774,10 +754,8 @@ function editEmpresa(empId){
 }
 
 async function saveEmpresa(){
-  console.log('[DEBUG] saveEmpresa iniciado');
   var rs=document.getElementById('e_rs').value.trim();
   var cnpj=(document.getElementById('e_cnpj').value||'').replace(/\D/g,'');
-  console.log('[DEBUG] rs:',rs,'cnpj:',cnpj,'length:',cnpj.length);
   if(!rs){toast('Informe a razão social.');return;}
   if(cnpj.length!==14){toast('CNPJ inválido. Digits:'+cnpj.length);return;}
   var emp={
@@ -797,7 +775,7 @@ async function saveEmpresa(){
     updatedAt:new Date().toISOString()
   };
   try{
-    if(editEmpIdx){
+    if(editEmpIdx && editEmpIdx !== -1){
       await db.collection('empresas').doc(editEmpIdx).update(emp);
       var idx=empresas.findIndex(function(e){return e.id===editEmpIdx;});
       if(idx>=0)empresas[idx]=Object.assign(empresas[idx],emp);
@@ -806,9 +784,7 @@ async function saveEmpresa(){
       emp.membros={};emp.membros[currentUser.uid]='admin';
       emp.criadoPor=currentUser.uid;emp.criadoEm=new Date().toISOString();
       emp.prods=[];emp.fbase={};emp.params={};emp.fornecedores=[];emp.pedidos=[];
-      console.log('[DEBUG] Tentando criar empresa no Firestore...');
     var ref=await db.collection('empresas').add(emp);
-    console.log('[DEBUG] Empresa criada! ID:', ref.id);
     emp.id=ref.id;empresas.push(emp);
       await db.collection('users').doc(currentUser.uid).set({
         empresaAtiva:ref.id,
@@ -822,7 +798,6 @@ async function saveEmpresa(){
     }
     editEmpIdx=-1;stabE(0);ren();
   }catch(e){
-    console.error('[DEBUG] saveEmpresa ERRO:',e.code, e.message);
     toast('Erro ao salvar: '+e.message);
   }
 }
