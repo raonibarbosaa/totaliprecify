@@ -774,10 +774,12 @@ function editEmpresa(empId){
 }
 
 async function saveEmpresa(){
+  console.log('[DEBUG] saveEmpresa iniciado');
   var rs=document.getElementById('e_rs').value.trim();
   var cnpj=(document.getElementById('e_cnpj').value||'').replace(/\D/g,'');
+  console.log('[DEBUG] rs:',rs,'cnpj:',cnpj,'length:',cnpj.length);
   if(!rs){toast('Informe a razão social.');return;}
-  if(cnpj.length!==14){toast('CNPJ inválido.');return;}
+  if(cnpj.length!==14){toast('CNPJ inválido. Digits:'+cnpj.length);return;}
   var emp={
     razaoSocial:rs,cnpj:cnpj,
     nomeFantasia:document.getElementById('e_nf').value,
@@ -804,8 +806,10 @@ async function saveEmpresa(){
       emp.membros={};emp.membros[currentUser.uid]='admin';
       emp.criadoPor=currentUser.uid;emp.criadoEm=new Date().toISOString();
       emp.prods=[];emp.fbase={};emp.params={};emp.fornecedores=[];emp.pedidos=[];
-      var ref=await db.collection('empresas').add(emp);
-      emp.id=ref.id;empresas.push(emp);
+      console.log('[DEBUG] Tentando criar empresa no Firestore...');
+    var ref=await db.collection('empresas').add(emp);
+    console.log('[DEBUG] Empresa criada! ID:', ref.id);
+    emp.id=ref.id;empresas.push(emp);
       await db.collection('users').doc(currentUser.uid).set({
         empresaAtiva:ref.id,
         email:currentUser.email,
@@ -817,7 +821,10 @@ async function saveEmpresa(){
       toast('Empresa criada com sucesso!');
     }
     editEmpIdx=-1;stabE(0);ren();
-  }catch(e){toast('Erro: '+e.message);}
+  }catch(e){
+    console.error('[DEBUG] saveEmpresa ERRO:',e.code, e.message);
+    toast('Erro ao salvar: '+e.message);
+  }
 }
 
 function bMembrosForm(){
