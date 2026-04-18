@@ -37,8 +37,6 @@ firebase.initializeApp({
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;display:flex;flex-direction:column}
 
-
-50%{opacity:.2}}
 .hdr{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-items:center;gap:10px;height:56px;flex-shrink:0}
 .logo-img{height:32px;object-fit:contain;mix-blend-mode:screen}
 .lsep{width:1px;height:26px;background:var(--bdr2);margin:0 4px}
@@ -171,79 +169,6 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .ld-txt{font-size:10px;color:var(--t3);font-family:var(--sans);letter-spacing:.5px}
 
 
-
-@keyframes pulse2{0%,100%{opacity:1}50%{opacity:.25}}
-@keyframes ldbar{0%{left:-40%;width:30%}50%{left:30%;width:40%}100%{left:110%;width:30%}}
-@keyframes fadeOut{to{opacity:0;visibility:hidden}}
-#ls{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s}
-#ls.done{opacity:0;pointer-events:none}
-.ls-logo{height:50px;object-fit:contain;mix-blend-mode:screen;margin-bottom:32px}
-.ls-bar-wrap{width:200px;height:2px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-bottom:20px;position:relative}
-.ls-bar-fill{position:absolute;top:0;height:100%;background:linear-gradient(90deg,transparent,var(--gold),var(--gold2),transparent);animation:ldbar 1.6s ease-in-out infinite}
-.ls-dots{display:flex;gap:7px;margin-bottom:14px}
-.ls-dot{width:7px;height:7px;border-radius:50%;background:var(--gold2);animation:pulse2 1.2s infinite}
-.ls-dot:nth-child(2){animation-delay:.25s}
-.ls-dot:nth-child(3){animation-delay:.5s}
-.ls-msg{font-size:10px;color:var(--t3);font-family:var(--sans);letter-spacing:.8px;text-transform:uppercase}
-
-#auth-screen .f input{background:var(--bg3);border:1px solid var(--bdr2);border-radius:6px;padding:8px 10px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;width:100%}
-#auth-screen .f input:focus{border-color:var(--gold)}
-#auth-screen .f label{font-size:9px;font-weight:700;color:var(--t2);letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:4px}
-
-
-@keyframes pulse2{0%,100%{opacity:1}50%{opacity:.25}}
-@keyframes ldbar{0%{left:-40%;width:30%}50%{left:30%;width:40%}100%{left:110%;width:30%}}
-#ls{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s}
-#ls.done{opacity:0;pointer-events:none}
-.ls-logo{height:50px;object-fit:contain;mix-blend-mode:screen;margin-bottom:32px}
-.ls-bar-wrap{width:200px;height:2px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-bottom:20px;position:relative}
-.ls-bar-fill{position:absolute;top:0;height:100%;background:linear-gradient(90deg,transparent,var(--gold),var(--gold2),transparent);animation:ldbar 1.6s ease-in-out infinite}
-.ls-dots{display:flex;gap:7px;margin-bottom:14px}
-.ls-dot{width:7px;height:7px;border-radius:50%;background:var(--gold2);animation:pulse2 1.2s infinite}
-.ls-dot:nth-child(2){animation-delay:.25s}
-.ls-dot:nth-child(3){animation-delay:.5s}
-.ls-msg{font-size:10px;color:var(--t3);font-family:var(--sans);letter-spacing:.8px;text-transform:uppercase}
-
-
-#auth-screen .f input{background:var(--bg3);border:1px solid var(--bdr2);border-radius:6px;padding:8px 10px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;width:100%}
-#auth-screen .f input:focus{border-color:var(--gold)}
-#auth-screen .f label{font-size:9px;font-weight:700;color:var(--t2);letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:4px}
-
-
-@keyframes pulse2{0%,100%{opacity:1}50%{opacity:.25}}
-@keyframes ldbar{0%{left:-40%;width:30%}50%{left:30%;width:40%}100%{left:110%;width:30%}}
-#ls{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s}
-#ls.done{opacity:0;pointer-events:none}
-.ls-logo{height:50px;object-fit:contain;mix-blend-mode:screen;margin-bottom:32px}
-.ls-bar-wrap{width:200px;height:2px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-bottom:20px;position:relative}
-.ls-bar-fill{position:absolute;top:0;height:100%;background:linear-gradient(90deg,transparent,var(--gold),var(--gold2),transparent);animation:ldbar 1.6s ease-in-out infinite}
-.ls-dots{display:flex;gap:7px;margin-bottom:14px}
-.ls-dot{width:7px;height:7px;border-radius:50%;background:var(--gold2);animation:pulse2 1.2s infinite}
-.ls-dot:nth-child(2){animation-delay:.25s}
-.ls-dot:nth-child(3){animation-delay:.5s}
-.ls-msg{font-size:10px;color:var(--t3);font-family:var(--sans);letter-spacing:.8px;text-transform:uppercase}
-}
-
-#auth-screen .f input{background:var(--bg3);border:1px solid var(--bdr2);border-radius:6px;padding:8px 10px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;width:100%}
-#auth-screen .f input:focus{border-color:var(--gold)}
-#auth-screen .f label{font-size:9px;font-weight:700;color:var(--t2);letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:4px}
-.conc-row{display:grid;grid-template-columns:1fr 90px 90px 26px;gap:5px;align-items:center;margin-bottom:5px}
-.conc-row input{background:var(--bg3);border:1px solid var(--bdr2);border-radius:5px;padding:5px 8px;color:var(--text);font-family:var(--mono);font-size:10px;outline:none;width:100%}
-.conc-row input:focus{border-color:var(--gold)}
-.cdel{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);border-radius:5px;color:var(--danger);font-size:14px;cursor:pointer;height:26px;width:26px;display:flex;align-items:center;justify-content:center;font-weight:700}
-
-
-@keyframes pulse2{0%,100%{opacity:1}50%{opacity:.25}}
-@keyframes ldbar{0%{left:-40%;width:30%}50%{left:30%;width:40%}100%{left:110%;width:30%}}
-#ls{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s}
-.ls-logo{height:50px;object-fit:contain;mix-blend-mode:screen;margin-bottom:32px}
-.ls-bar-wrap{width:200px;height:2px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-bottom:20px;position:relative}
-.ls-bar-fill{position:absolute;top:0;height:100%;background:linear-gradient(90deg,transparent,var(--gold),var(--gold2),transparent);animation:ldbar 1.6s ease-in-out infinite}
-.ls-dots{display:flex;gap:7px;margin-bottom:14px}
-.ls-dot{width:7px;height:7px;border-radius:50%;background:var(--gold2);animation:pulse2 1.2s infinite}
-.ls-dot:nth-child(2){animation-delay:.25s}.ls-dot:nth-child(3){animation-delay:.5s}
-.ls-msg{font-size:10px;color:var(--t3);font-family:var(--sans);letter-spacing:.8px;text-transform:uppercase}
-@keyframes spin{to{transform:rotate(360deg)}}
 
 #auth-screen .f input{background:var(--bg3);border:1px solid var(--bdr2);border-radius:6px;padding:8px 10px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;width:100%}
 #auth-screen .f input:focus{border-color:var(--gold)}
@@ -784,33 +709,32 @@ async function saveEmpresa(){
       emp.membros={};emp.membros[currentUser.uid]='admin';
       emp.criadoPor=currentUser.uid;emp.criadoEm=new Date().toISOString();
       emp.prods=[];emp.fbase={};emp.params={};emp.fornecedores=[];emp.pedidos=[];
-    console.log('Criando empresa...',emp.membros,emp.criadoPor);
     var ref=await db.collection('empresas').add(emp);
-    console.log('Empresa criada:',ref.id);
     emp.id=ref.id;empresas.push(emp);
       // Get current empresasIds and append new one
       var userSnap2=await db.collection('users').doc(currentUser.uid).get();
       var existingIds=userSnap2.exists?(userSnap2.data().empresasIds||[]):[];
-      console.log('empresasIds antes:',JSON.stringify(existingIds));
       if(existingIds.indexOf(ref.id)<0)existingIds.push(ref.id);
-      console.log('empresasIds depois:',JSON.stringify(existingIds));
-      var userSaveResult=await db.collection('users').doc(currentUser.uid).set({
-        empresaAtiva:ref.id,
-        email:currentUser.email,
-        updatedAt:new Date().toISOString(),
-        empresasIds:existingIds
-      },{merge:true});
-      console.log('users doc salvo com empresasIds:',existingIds);
+      try{
+        await db.collection('users').doc(currentUser.uid).set({
+          empresaAtiva:ref.id,
+          email:currentUser.email,
+          updatedAt:new Date().toISOString(),
+          empresasIds:existingIds
+        },{merge:true});
+      }catch(saveErr){
+        console.error('ERRO ao salvar users doc:',saveErr.code,saveErr.message);
+        toast('Erro ao salvar acesso: '+saveErr.message);
+        return;
+      }
       // Verificar se foi salvo
       var verif=await db.collection('users').doc(currentUser.uid).get();
-      console.log('Verificação após salvar:',JSON.stringify(verif.data()));
       await loadEmpresaData(ref.id);
       updateEmpresaSelector();
       toast('Empresa criada com sucesso!');
     }
     editEmpIdx=-1;stabE(0);ren();
   }catch(e){
-    console.error('saveEmpresa erro:',e.code, e.message);
     toast('Erro ao salvar: '+e.message+' ('+e.code+')');
   }
 }
