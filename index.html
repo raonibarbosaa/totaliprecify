@@ -304,6 +304,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 
 
 
+
 // ── CRUZAMENTO PRODUTO × XML ─────────────────────────────
 
 function similaridade(a, b) {
@@ -880,7 +881,7 @@ function sv(){
   if(!currentUser||!curEmpresaId){console.warn('sv: sem empresa ativa');return;}
   db.collection('empresas').doc(curEmpresaId).set({
     prods:prods, fbase:fbase, updatedAt:new Date().toISOString()
-  },{merge:true}).catch(function(e){console.error('sv:',e);});
+  },{merge:true}).catch(function(e){console.error('sv erro:',e.code,e.message);});
 }
 function svParams(){
   if(!currentUser||!curEmpresaId)return;
@@ -897,9 +898,9 @@ function svNotasFiscais(){
 
 function svFornecedores(){
   if(!currentUser||!curEmpresaId)return;
-  db.collection('empresas').doc(curEmpresaId).update({
+  db.collection('empresas').doc(curEmpresaId).set({
     fornecedores:fornecedores, updatedAt:new Date().toISOString()
-  }).catch(function(e){console.error('svForn:',e);});
+  },{merge:true}).catch(function(e){console.error('svForn:',e);});
 }
 
 async function loadEmpresaData(empId){
@@ -927,7 +928,24 @@ function migrarEmpresa(d, empId){
   // Garantir campo notasFiscais
   if(!d.notasFiscais){updates.notasFiscais=[];precisaMigrar=true;}
   // Garantir campo fornecedores
-  if(!d.fornecedores){updates.fornecedores=[];precisaMigrar=true;}
+  if(!d.fornecedores){
+    // Tentar reconstruir fornecedores das notas fiscais
+    var fornFromNotas=[];
+    (d.notasFiscais||[]).forEach(function(n){
+      if(n.fornecedor&&n.fornecedor.cnpj){
+        var exists=fornFromNotas.find(function(f){return f.cnpj===n.fornecedor.cnpj;});
+        if(!exists)fornFromNotas.push({
+          id:gerarId(),razaoSocial:n.fornecedor.razaoSocial||n.fornecedor.cnpj,
+          cnpj:n.fornecedor.cnpj,ie:n.fornecedor.ie||'',
+          contato:'',telefone:'',email:'',uf:'',
+          criadoEm:new Date().toISOString(),autoImportado:true
+        });
+      }
+    });
+    updates.fornecedores=fornFromNotas;
+    fornecedores=fornFromNotas;
+    precisaMigrar=true;
+  }
   // Garantir campo pedidos
   if(!d.pedidos){updates.pedidos=[];precisaMigrar=true;}
   // Adicionar id e cEAN nos produtos existentes
@@ -2103,6 +2121,14 @@ function saveImp(i){
   if(!p.id)p.id=gerarId();
   var novoIdx=prods.length;
   prods.push(p);
+  // Garantir que fornecedor está salvo na lista de fornecedores
+  if(p.fornecedoresProd&&p.fornecedoresProd.length>0){
+    p.fornecedoresProd.forEach(function(fp){
+      if(fp.fornecedorCNPJ){
+        salvarFornecedorAutoXML(fp.razaoSocial||fp.fornecedorCNPJ, fp.fornecedorCNPJ);
+      }
+    });
+  }
   sv();
   // Vincular de volta na nota fiscal
   if(p.notaFiscalChave){
@@ -2453,6 +2479,7 @@ function toast(msg){
   setTimeout(function(){t.style.opacity='0';setTimeout(function(){t.remove();},300);},2800);
 }
 document.addEventListener('click',function(e){if(e.target.classList&&e.target.classList.contains('overlay'))e.target.remove();});
+
 
 
 
