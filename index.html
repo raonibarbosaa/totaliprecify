@@ -283,6 +283,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <button class="nb" onclick="go('prod')">Produtos</button>
     <button class="nb" onclick="go('forn')">Fornecedores</button>
     <button class="nb" onclick="go('pedidos')">Pedidos</button>
+    <button class="nb" onclick="go('notas')">Notas Fiscais</button>
     <button class="nb" onclick="go('empresas')">Empresas</button>
     <button class="nb" onclick="go('preco')">Forma&ccedil;&atilde;o de Pre&ccedil;o</button>
     <button class="btn g xs" onclick="exportXLS()" style="margin-left:4px">&#8659; Excel</button>
@@ -364,7 +365,7 @@ function doLogin(){
 }
 function doLogout(){
   firebase.auth().signOut().then(function(){
-    prods=[];fbase={};params={};fornecedores=[];pedidos=[];
+    prods=[];fbase={};params={};fornecedores=[];pedidos=[];notasFiscais=[];
     empresas=[];curEmpresa=null;curEmpresaId=null;
   });
 }
@@ -464,6 +465,13 @@ function svParams(){
     params:params, updatedAt:new Date().toISOString()
   }).catch(function(e){console.error('svParams:',e);});
 }
+function svNotasFiscais(){
+  if(!currentUser||!curEmpresaId)return;
+  db.collection('empresas').doc(curEmpresaId).update({
+    notasFiscais:notasFiscais, updatedAt:new Date().toISOString()
+  }).catch(function(e){console.error('svNotas:',e);});
+}
+
 function svFornecedores(){
   if(!currentUser||!curEmpresaId)return;
   db.collection('empresas').doc(curEmpresaId).update({
@@ -483,6 +491,7 @@ async function loadEmpresaData(empId){
       params=d.params||{};
       fornecedores=d.fornecedores||[];
       pedidos=d.pedidos||[];
+      notasFiscais=d.notasFiscais||[];
     }
   }catch(e){console.error('loadEmpresaData:',e);}
 }
@@ -570,7 +579,7 @@ async function trocarEmpresa(empId){
 // ── NAVEGAÇÃO ────────────────────────────────────────────
 function go(p){
   curPage=p;
-  var pages=['dash','xml','prod','forn','pedidos','empresas','preco'];
+  var pages=['dash','xml','prod','forn','pedidos','notas','empresas','preco'];
   document.querySelectorAll('.nb').forEach(function(b,i){b.classList.toggle('on',pages[i]===p);});
   updateEmpresaSelector();
   ren();
@@ -605,6 +614,7 @@ function ren(){
   else if(curPage==='forn')el.innerHTML=rForn();
   else if(curPage==='pedidos')el.innerHTML=rPedidos();
   else if(curPage==='empresas')el.innerHTML=rEmpresas();
+  else if(curPage==='notas')el.innerHTML=rNotas();
   else if(curPage==='preco')el.innerHTML=rPreco();
   else if(curPage==='admin'){
     if(!isAdmin()){el.innerHTML='<div class="empty">Acesso negado.</div>';return;}
@@ -995,6 +1005,34 @@ function rForn(){
     }).join('')+'</table></div></div>')+'</div>'
     +'<div id="ff2" style="display:none">'+bFornForm()+'</div>';
 }
+function filtrarNotasPorForn(cnpj){
+  var sel=document.getElementById('prod_nota_sel');
+  if(!sel)return;
+  var notas=notasFiscais.filter(function(n){return n.fornecedor&&n.fornecedor.cnpj===cnpj;});
+  sel.innerHTML='<option value="">Selecione a nota...</option>'
+    +notas.map(function(n,i){
+      return'<option value="'+notasFiscais.indexOf(n)+'">NF-'+esc(n.numero)+' ('+n.dataEmissao+')</option>';
+    }).join('');
+}
+
+function preencherCustoDaNota(notaIdx){
+  if(!notaIdx)return;
+  var nota=notasFiscais[parseInt(notaIdx)];
+  if(!nota||!nota.itens||!nota.itens.length)return;
+  // Preencher com primeiro item da nota
+  var it=nota.itens[0];
+  var cu=document.getElementById('fcu');
+  var fn2=document.getElementById('fn');
+  var fc=document.getElementById('fc');
+  var fci2=document.getElementById('fci2');
+  if(cu&&it.vUnCom)cu.value=it.vUnCom;
+  if(fn2&&it.ncm)fn2.value=it.ncm;
+  if(fc&&it.cest)fc.value=it.cest;
+  if(fci2&&it.cProd)fci2.value=it.cProd;
+  if(cu)atuST();
+  toast('Dados preenchidos da NF-'+nota.numero);
+}
+
 function stabF2(idx){
   var fl=document.getElementById('fl'),ff2=document.getElementById('ff2');
   if(fl)fl.style.display=idx===0?'block':'none';
@@ -1370,6 +1408,11 @@ function bForm(){
     +'<div class="f" style="flex:1"><label>Aliq. efetiva antecipação (%)</label><input type="number" id="fal_antec" readonly></div>'
     +'<button class="btn" onclick="openAntec()" style="flex-shrink:0;margin-bottom:1px">Calcular antecipação</button></div>'
     +'<div class="f"><label>Alíquota FCP (%)</label><input type="number" id="ffcp" placeholder="0" step="0.01" value="0"></div></div></div>'
+    +'<div class="card"><div class="ct">Nota Fiscal de origem</div>'
+    +'<div class="g2" style="margin-bottom:8px">'
+    +'<div class="f"><label>Fornecedor</label><select id="prod_forn_sel" onchange="filtrarNotasPorForn(this.value)"><option value="">Selecione...</option>'+fornecedores.map(function(f){return'<option value="'+f.cnpj+'">'+esc(f.razaoSocial)+'</option>';}).join('')+'</select></div>'
+    +'<div class="f"><label>Número da nota</label><select id="prod_nota_sel" onchange="preencherCustoDaNota(this.value)"><option value="">Selecione...</option></select></div>'
+    +'</div></div>'
     +'<div class="card"><div class="ct">Fornecedores do produto</div>'
     +'<div id="prod_forn_list"></div>'
     +'<button class="btn xs" onclick="addProdForn()" style="margin-top:4px">+ Vincular fornecedor</button></div>'
@@ -1512,25 +1555,79 @@ function gv2(el,tag){var n=el.getElementsByTagName(tag)[0];return n?n.textConten
 function pNFe(xml){
   try{
     var doc=new DOMParser().parseFromString(xml,'text/xml');
-    var emitCNPJ=gv2(doc,'CNPJ');
-    var emitNome=gv2(doc,'xNome');
+    function gvd(el,tag){var n=el.getElementsByTagName(tag)[0];return n?n.textContent:'';}
+    // Emitente
+    var emitEl=doc.getElementsByTagName('emit')[0]||doc;
+    var emitCNPJ=gvd(emitEl,'CNPJ')||gv2(doc,'CNPJ');
+    var emitNome=gvd(emitEl,'xNome')||gv2(doc,'xNome');
+    var emitIE=gvd(emitEl,'IE')||'';
+    // Destinatário
+    var destEl=doc.getElementsByTagName('dest')[0]||doc;
+    var destCNPJ=gvd(destEl,'CNPJ')||'';
+    var destNome=gvd(destEl,'xNome')||'';
+    // Dados da nota
+    var ideEl=doc.getElementsByTagName('ide')[0]||doc;
+    var chaveEl=doc.getElementsByTagName('chNFe')[0];
+    var chave=chaveEl?chaveEl.textContent:'';
+    var numero=gvd(ideEl,'nNF')||'';
+    var serie=gvd(ideEl,'serie')||'';
+    var dataEmissao=(gvd(ideEl,'dhEmi')||gvd(ideEl,'dEmi')||'').slice(0,10);
+    var natOp=gvd(ideEl,'natOp')||'';
+    // Totais
+    var totEl=doc.getElementsByTagName('ICMSTot')[0]||doc;
+    var vNF=parseFloat(gvd(doc,'vNF')||'0');
+    var vProd=parseFloat(gvd(totEl,'vProd')||'0');
+    var vST_tot=parseFloat(gvd(totEl,'vST')||'0');
+    var vIPI_tot=parseFloat(gvd(totEl,'vIPI')||'0');
+    var vFrete=parseFloat(gvd(totEl,'vFrete')||'0');
+    // Verificar duplicata
+    if(chave&&notasFiscais.find(function(n){return n.chaveNFe===chave;})){
+      toast('Nota fiscal '+numero+' já importada anteriormente.');
+    }
+    // Salvar fornecedor
     salvarFornecedorAutoXML(emitNome,emitCNPJ);
+    // Processar itens
     var dets=doc.getElementsByTagName('det');
     if(!dets.length){toast('XML sem itens.');return;}
+    var itensNota=[];
     Array.from(dets).forEach(function(det){
-      var vST=parseFloat(gv2(det,'vICMSST')||'0');
-      var vIPI=parseFloat(gv2(det,'vIPI')||'0');
+      var vSTi=parseFloat(gv2(det,'vICMSST')||'0');
+      var vIPIi=parseFloat(gv2(det,'vIPI')||'0');
       var cu=parseFloat(gv2(det,'vUnCom')||'0');
-      var stEf=cu>0&&vST>0?(vST/cu)*100:0;
-      impProds.push({desc:gv2(det,'xProd'),ncm:gv2(det,'NCM'),cest:gv2(det,'CEST'),codigoInt:'',
-        custo:cu,ipi:vIPI>0&&cu>0?(vIPI/cu)*100:0,freteEntrada:0,markup:0,
+      var qtd=parseFloat(gv2(det,'qCom')||'1');
+      var stEf=cu>0&&vSTi>0?(vSTi/cu)*100:0;
+      var item={
+        cProd:gv2(det,'cProd'),xProd:gv2(det,'xProd'),ncm:gv2(det,'NCM'),
+        cest:gv2(det,'CEST'),cfop:gv2(det,'CFOP'),unidade:gv2(det,'uCom'),
+        quantidade:qtd,vUnCom:cu,vProd:parseFloat(gv2(det,'vProd')||'0'),
+        vIPI:vIPIi,vST:vSTi,produtoId:null
+      };
+      itensNota.push(item);
+      impProds.push({desc:item.xProd,ncm:item.ncm,cest:item.cest,codigoInt:item.cProd,
+        custo:cu,ipi:vIPIi>0&&cu>0?(vIPIi/cu)*100:0,freteEntrada:0,markup:0,
         alqInt:parseFloat(gv2(det,'pICMS')||'0'),alqOrig:0,
-        temST:vST>0,stEf:parseFloat(stEf.toFixed(4)),
-        tipoProd:vST>0?'st':'tributado',
-        fornecedoresProd:[{fornecedorId:emitCNPJ,precoUltCompra:cu,dataUltCompra:new Date().toISOString().slice(0,10),principal:true}],
+        temST:vSTi>0,stEf:parseFloat(stEf.toFixed(4)),
+        tipoProd:vSTi>0?'st':'tributado',
+        notaFiscalChave:chave,notaFiscalNum:numero,
+        fornecedoresProd:[{fornecedorId:emitCNPJ,precoUltCompra:cu,
+          dataUltCompra:dataEmissao||new Date().toISOString().slice(0,10),principal:true}],
         concorrentes:[],precoVenda:null,margemReal:null,metodo:null});
     });
+    // Salvar nota fiscal completa
+    if(!chave||!notasFiscais.find(function(n){return n.chaveNFe===chave;})){
+      var nota={
+        id:gerarId(),chaveNFe:chave,numero:numero,serie:serie,
+        dataEmissao:dataEmissao,naturezaOp:natOp,
+        fornecedor:{razaoSocial:emitNome,cnpj:emitCNPJ,ie:emitIE},
+        destinatario:{cnpj:destCNPJ,razaoSocial:destNome},
+        totais:{vNF:vNF,vProd:vProd,vST:vST_tot,vIPI:vIPI_tot,vFrete:vFrete},
+        itens:itensNota,importadoEm:new Date().toISOString()
+      };
+      notasFiscais.push(nota);
+      svNotasFiscais();
+    }
     ren();setTimeout(function(){setupXML();},60);
+    toast('XML importado: NF '+numero+' - '+emitNome);
   }catch(ex){toast('Erro XML: '+ex.message);}
 }
 function rImp(){
@@ -1548,6 +1645,122 @@ function saveImp(i){
   var p=Object.assign({},impProds[i]);
   if(!p.concorrentes)p.concorrentes=[];
   prods.push(p);sv();impProds.splice(i,1);ren();toast('Produto salvo!');
+}
+
+// ── NOTAS FISCAIS ─────────────────────────────────────────
+var notaFiltroMes='', notaFiltroForn='', notaFiltroBusca='';
+
+function rNotas(){
+  var lista=notasFiscais.slice().reverse();
+  // Filtros
+  if(notaFiltroMes)lista=lista.filter(function(n){return(n.dataEmissao||'').slice(0,7)===notaFiltroMes;});
+  if(notaFiltroForn)lista=lista.filter(function(n){return n.fornecedor&&n.fornecedor.cnpj===notaFiltroForn;});
+  if(notaFiltroBusca){
+    var q=notaFiltroBusca.toLowerCase();
+    lista=lista.filter(function(n){
+      return(n.numero||'').includes(q)
+        ||(n.fornecedor&&(n.fornecedor.razaoSocial||'').toLowerCase().includes(q))
+        ||(n.itens||[]).some(function(it){return(it.xProd||'').toLowerCase().includes(q);});
+    });
+  }
+  // Meses únicos para filtro
+  var meses=[...new Set(notasFiscais.map(function(n){return(n.dataEmissao||'').slice(0,7);}).filter(Boolean))].sort().reverse();
+  var mesesOpts='<option value="">Todos os meses</option>'+meses.map(function(m){
+    return'<option value="'+m+'"'+(notaFiltroMes===m?' selected':'')+'>'+m+'</option>';
+  }).join('');
+  var fornOpts='<option value="">Todos os fornecedores</option>'+fornecedores.map(function(f){
+    return'<option value="'+f.cnpj+'"'+(notaFiltroForn===f.cnpj?' selected':'')+'>'+esc(f.razaoSocial)+'</option>';
+  }).join('');
+  return'<div class="card">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+    +'<div class="ct" style="margin-bottom:0">Notas Fiscais</div>'
+    +'<div style="font-size:10px;color:var(--t2)">'+notasFiscais.length+' nota(s) importada(s)</div>'
+    +'</div>'
+    +'<div class="g3f" style="margin-bottom:12px">'
+    +'<div class="f"><label>Buscar</label><input id="nota-busca" placeholder="Número, fornecedor, produto..." value="'+esc(notaFiltroBusca)+'" oninput="notaFiltroBusca=this.value;ren()"></div>'
+    +'<div class="f"><label>Mês/Ano</label><select id="nota-mes" onchange="notaFiltroMes=this.value;ren()">'+mesesOpts+'</select></div>'
+    +'<div class="f"><label>Fornecedor</label><select id="nota-forn" onchange="notaFiltroForn=this.value;ren()">'+fornOpts+'</select></div>'
+    +'</div>'
+    +(lista.length===0?'<div class="empty">Nenhuma nota encontrada.</div>'
+    :'<div style="overflow-x:auto"><table>'
+    +'<tr><th>Número</th><th>Fornecedor</th><th>Data</th><th>Itens</th><th>Valor total</th><th>ST</th><th>IPI</th><th>Frete</th><th></th></tr>'
+    +lista.map(function(n,i){
+      var realIdx=notasFiscais.indexOf(n);
+      return'<tr>'
+        +'<td><span class="tag">NF-'+esc(n.numero||'—')+'</span></td>'
+        +'<td style="font-family:var(--sans);font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis">'+(n.fornecedor?esc(n.fornecedor.razaoSocial):'—')+'</td>'
+        +'<td style="font-family:var(--mono);font-size:9px">'+(n.dataEmissao||'—')+'</td>'
+        +'<td style="text-align:center">'+(n.itens||[]).length+'</td>'
+        +'<td>'+fR(n.totais&&n.totais.vNF||0)+'</td>'
+        +'<td>'+fR(n.totais&&n.totais.vST||0)+'</td>'
+        +'<td>'+fR(n.totais&&n.totais.vIPI||0)+'</td>'
+        +'<td>'+fR(n.totais&&n.totais.vFrete||0)+'</td>'
+        +'<td style="display:flex;gap:4px">'
+        +'<button class="btn xs p" data-idx="'+realIdx+'" onclick="verNota(this)">Ver</button>'
+        +'<button class="btn xs g" data-idx="'+realIdx+'" onclick="exportNotaXLS(this)">Excel</button>'
+        +'</td></tr>';
+    }).join('')+'</table></div>')
+    +'</div>';
+}
+
+function verNota(btn){
+  var idx=parseInt(btn.getAttribute('data-idx'));
+  var n=notasFiscais[idx];if(!n)return;
+  var ov=document.createElement('div');ov.className='overlay';ov.id='notaov';
+  var prodOpts=prods.map(function(p,pi){return'<option value="'+pi+'">'+esc(p.desc)+'</option>';}).join('');
+  ov.innerHTML='<div class="modal modal-lg">'
+    +'<div class="mt2">NF-'+esc(n.numero||'—')+' / Série '+esc(n.serie||'—')+'</div>'
+    +'<div class="ms2">'+(n.fornecedor?esc(n.fornecedor.razaoSocial):'—')+' &middot; '+(n.dataEmissao||'—')+' &middot; '+esc(n.naturezaOp||'')+'</div>'
+    +'<div class="g4" style="margin-bottom:12px">'
+    +pbr('Valor total',fR(n.totais&&n.totais.vNF||0))
+    +pbr('ICMS ST',fR(n.totais&&n.totais.vST||0))
+    +pbr('IPI',fR(n.totais&&n.totais.vIPI||0))
+    +pbr('Frete',fR(n.totais&&n.totais.vFrete||0))
+    +'</div>'
+    +'<div style="font-size:9px;color:var(--t3);margin-bottom:8px;font-family:var(--mono)">Chave: '+esc(n.chaveNFe||'—')+'</div>'
+    +'<div class="card"><div class="ct">'+( n.itens||[]).length+' item(ns)</div>'
+    +'<div style="overflow-x:auto"><table>'
+    +'<tr><th>Código</th><th>Produto</th><th>NCM</th><th>Qtd</th><th>Vl. unit.</th><th>Total</th><th>ST</th><th>Vincular produto</th></tr>'
+    +(n.itens||[]).map(function(it,ii){
+      var vinc=it.produtoId!==null&&it.produtoId!==undefined?prods[it.produtoId]:null;
+      return'<tr>'
+        +'<td><span class="tag">'+esc(it.cProd||'—')+'</span></td>'
+        +'<td style="font-family:var(--sans);font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis">'+esc(it.xProd||'—')+'</td>'
+        +'<td><span class="tag">'+(it.ncm||'—')+'</span></td>'
+        +'<td style="font-family:var(--mono)">'+(it.quantidade||0)+'</td>'
+        +'<td>'+fR(it.vUnCom||0)+'</td>'
+        +'<td>'+fR(it.vProd||0)+'</td>'
+        +'<td>'+fR(it.vST||0)+'</td>'
+        +'<td><select style="background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:3px 6px;color:var(--text);font-size:9px;max-width:140px" onchange="vincularProdNota('+idx+','+ii+',this.value)">'
+        +'<option value="">'+( vinc?esc(vinc.desc):'Vincular...')+'</option>'+prodOpts+'</select></td>'
+        +'</tr>';
+    }).join('')+'</table></div></div>'
+    +'<div class="btns"><button class="btn" onclick="clsOv(&quot;notaov&quot;)">Fechar</button></div>'
+    +'</div>';
+  document.body.appendChild(ov);
+}
+
+function vincularProdNota(notaIdx,itemIdx,prodIdx){
+  if(!notasFiscais[notaIdx]||!notasFiscais[notaIdx].itens[itemIdx])return;
+  notasFiscais[notaIdx].itens[itemIdx].produtoId=prodIdx===''?null:parseInt(prodIdx);
+  svNotasFiscais();
+  toast('Produto vinculado!');
+}
+
+function exportNotaXLS(btn){
+  if(typeof XLSX==='undefined'){toast('Excel requer conexão.');return;}
+  var idx=parseInt(btn.getAttribute('data-idx'));
+  var n=notasFiscais[idx];if(!n)return;
+  var wb=XLSX.utils.book_new();
+  var h=['Código','Produto','NCM','CFOP','Unidade','Quantidade','Valor unit.','Valor total','IPI','ST'];
+  var d=(n.itens||[]).map(function(it){
+    return[it.cProd||'',it.xProd||'',it.ncm||'',it.cfop||'',it.unidade||'',
+      it.quantidade||0,it.vUnCom||0,it.vProd||0,it.vIPI||0,it.vST||0];
+  });
+  var ws=XLSX.utils.aoa_to_sheet([h].concat(d));
+  XLSX.utils.book_append_sheet(wb,ws,'Itens NF-'+n.numero);
+  XLSX.writeFile(wb,'NF_'+n.numero+'_'+esc(n.fornecedor&&n.fornecedor.razaoSocial||'').slice(0,20).replace(/ /g,'_')+'.xlsx');
+  toast('Excel exportado!');
 }
 
 // ── FORMAÇÃO DE PREÇO ─────────────────────────────────────
@@ -1861,7 +2074,7 @@ function exportXLS(){
     return[p.desc,p.ncm||'',p.cest||'',tipoLabel,regimeName(),p.custo||0,p.ipi||0,p.freteEntrada||0,p.stEf||0,p.alqAntec||0,p.alqFCP||0,parseFloat(c.ct.toFixed(2)),p.markup||0,p.metodo||'—',p.precoVenda||'',p.margemReal||'',st==='ok'?'Competitivo':st==='nao'?'Não competitivo':'Sem cotação'];});
   var ws1=XLSX.utils.aoa_to_sheet([h1].concat(d1));
   XLSX.utils.book_append_sheet(wb,ws1,'Produtos');
-  XLSX.writeFile(wb,'Totali_Precify_'+curEmpresa.razaoSocial.slice(0,20).replace(/\s/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  XLSX.writeFile(wb,'Totali_Precify_'+curEmpresa.razaoSocial.slice(0,20).replace(/ /g,'_')+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
   toast('Excel exportado!');
 }
 
