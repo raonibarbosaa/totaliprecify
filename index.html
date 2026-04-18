@@ -785,25 +785,34 @@ async function saveEmpresa(){
       emp.membros={};emp.membros[currentUser.uid]='admin';
       emp.criadoPor=currentUser.uid;emp.criadoEm=new Date().toISOString();
       emp.prods=[];emp.fbase={};emp.params={};emp.fornecedores=[];emp.pedidos=[];
+    console.log('Criando empresa...',emp.membros,emp.criadoPor);
     var ref=await db.collection('empresas').add(emp);
+    console.log('Empresa criada:',ref.id);
     emp.id=ref.id;empresas.push(emp);
       // Get current empresasIds and append new one
       var userSnap2=await db.collection('users').doc(currentUser.uid).get();
       var existingIds=userSnap2.exists?(userSnap2.data().empresasIds||[]):[];
+      console.log('empresasIds antes:',JSON.stringify(existingIds));
       if(existingIds.indexOf(ref.id)<0)existingIds.push(ref.id);
-      await db.collection('users').doc(currentUser.uid).set({
+      console.log('empresasIds depois:',JSON.stringify(existingIds));
+      var userSaveResult=await db.collection('users').doc(currentUser.uid).set({
         empresaAtiva:ref.id,
         email:currentUser.email,
         updatedAt:new Date().toISOString(),
         empresasIds:existingIds
       },{merge:true});
+      console.log('users doc salvo com empresasIds:',existingIds);
+      // Verificar se foi salvo
+      var verif=await db.collection('users').doc(currentUser.uid).get();
+      console.log('Verificação após salvar:',JSON.stringify(verif.data()));
       await loadEmpresaData(ref.id);
       updateEmpresaSelector();
       toast('Empresa criada com sucesso!');
     }
     editEmpIdx=-1;stabE(0);ren();
   }catch(e){
-    toast('Erro ao salvar: '+e.message);
+    console.error('saveEmpresa erro:',e.code, e.message);
+    toast('Erro ao salvar: '+e.message+' ('+e.code+')');
   }
 }
 
