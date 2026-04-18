@@ -513,52 +513,44 @@ async function loadEmpresaData(empId){
 }
 
 async function loadUserEmpresas(){
+  empresas=[];
+  curEmpresa=null;curEmpresaId=null;
+  prods=[];fbase={};params={};fornecedores=[];pedidos=[];
   try{
-    // Buscar dados do usuário
     var userDoc=await db.collection('users').doc(currentUser.uid).get();
-    var userData=userDoc.exists?userDoc.data():{};
-    var empresaAtiva=userData.empresaAtiva||null;
-    var empresasIds=userData.empresasIds||[];
-
-    empresas=[];
-
-    // Se tem lista de IDs, buscar por ID (mais confiável)
-    if(empresasIds.length>0){
-      for(var i=0;i<empresasIds.length;i++){
-        try{
-          var doc=await db.collection('empresas').doc(empresasIds[i]).get();
-          if(doc.exists)empresas.push(Object.assign({id:doc.id},doc.data()));
-        }catch(e2){console.warn('Empresa não acessível:',empresasIds[i]);}
-      }
-    }
-
-    // Fallback: tentar query por membro
-    if(empresas.length===0){
-      try{
-        var snap=await db.collection('empresas')
-          .where('membros.'+currentUser.uid,'!=',null)
-          .get();
-        snap.forEach(function(doc){empresas.push(Object.assign({id:doc.id},doc.data()));});
-      }catch(e3){console.warn('Query membros falhou:',e3.message);}
-    }
-
-    if(empresas.length===0){
-      curEmpresa=null;curEmpresaId=null;
-      prods=[];fbase={};params={};fornecedores=[];pedidos=[];
+    if(!userDoc.exists){
+      console.log('[DEBUG] Usuario sem doc no Firestore');
       return;
     }
-
-    var empAtiva=empresas.find(function(e){return e.id===empresaAtiva;});
-    if(empAtiva){
-      await loadEmpresaData(empresaAtiva);
-    } else {
-      await loadEmpresaData(empresas[0].id);
-      await db.collection('users').doc(currentUser.uid).set({empresaAtiva:empresas[0].id},{merge:true});
+    var userData=userDoc.data();
+    console.log('[DEBUG] userData keys:',Object.keys(userData));
+    var empresaAtiva=userData.empresaAtiva||null;
+    var empresasIds=userData.empresasIds;
+    if(!Array.isArray(empresasIds))empresasIds=[];
+    console.log('[DEBUG] empresasIds:',empresasIds,'empresaAtiva:',empresaAtiva);
+    if(empresasIds.length===0){
+      console.log('[DEBUG] Sem empresas cadastradas');
+      return;
+    }
+    for(var i=0;i<empresasIds.length;i++){
+      try{
+        var empDoc=await db.collection('empresas').doc(empresasIds[i]).get();
+        if(empDoc.exists){
+          empresas.push(Object.assign({id:empDoc.id},empDoc.data()));
+          console.log('[DEBUG] Empresa carregada:',empDoc.id);
+        }
+      }catch(e2){
+        console.warn('[DEBUG] Erro ao carregar empresa:',empresasIds[i],e2.message);
+      }
+    }
+    if(empresas.length===0){console.log('[DEBUG] Nenhuma empresa acessível');return;}
+    var idParaCarregar=empresaAtiva||empresas[0].id;
+    await loadEmpresaData(idParaCarregar);
+    if(!empresaAtiva){
+      await db.collection('users').doc(currentUser.uid).set({empresaAtiva:idParaCarregar},{merge:true});
     }
   }catch(e){
-    console.error('loadUserEmpresas:',e);
-    curEmpresa=null;curEmpresaId=null;
-    prods=[];fbase={};params={};fornecedores=[];pedidos=[];
+    console.error('[DEBUG] loadUserEmpresas ERRO:',e.message,e.code);
   }
 }
 
