@@ -461,10 +461,10 @@ function tipoBadge(t){if(t==='st')return'<span class="badge byy">ST</span>';if(t
 
 // ── FIREBASE LOAD/SAVE (multi-empresa) ───────────────────
 function sv(){
-  if(!currentUser||!curEmpresaId)return;
-  db.collection('empresas').doc(curEmpresaId).update({
+  if(!currentUser||!curEmpresaId){console.warn('sv: sem empresa ativa');return;}
+  db.collection('empresas').doc(curEmpresaId).set({
     prods:prods, fbase:fbase, updatedAt:new Date().toISOString()
-  }).catch(function(e){console.error('sv:',e);});
+  },{merge:true}).catch(function(e){console.error('sv:',e);});
 }
 function svParams(){
   if(!currentUser||!curEmpresaId)return;
@@ -567,7 +567,7 @@ function ren(){
   if(btnAdmin)btnAdmin.style.display=isAdmin()?'inline-flex':'none';
 
   // Sem empresa cadastrada
-  if(!curEmpresaId&&curPage!=='empresas'&&curPage!=='admin'){
+  if(!curEmpresaId&&curPage!=='empresas'&&curPage!=='admin'&&curPage!=='preco'){
     el.innerHTML=rSemEmpresa(); return;
   }
 
@@ -596,6 +596,7 @@ function rSemEmpresa(){
 
 // ── DASHBOARD ────────────────────────────────────────────
 function rDash(){
+  if(!curEmpresaId)return rSemEmpresa();
   if(!paramOk())return alertaParams()+rDashGrid();
   return rDashGrid();
 }
@@ -653,6 +654,7 @@ function rEmpresas(){
     +'<tr><th>Razão Social</th><th>CNPJ</th><th>UF</th><th>Regime</th><th>Produtos</th><th></th></tr>'
     +empresas.map(function(e,i){
       var isAtiva=e.id===curEmpresaId;
+      if(!e||!e.razaoSocial)return'';
       var pCount=e.id===curEmpresaId?prods.length:(e.prods||[]).length;
       var regime=(e.params&&e.params.regime)||'';
       var regLabel=regime==='simples'?'Simples':regime==='presumido'?'Presumido':regime==='real'?'Real':'—';
