@@ -13,6 +13,15 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
+window.onerror = function(msg, src, line, col, err) {
+  console.error('[GLOBAL ERROR]', msg, 'linha:', line, 'col:', col);
+  alert('ERRO ENCONTRADO:\n' + msg + '\nLinha: ' + line);
+  return false;
+};
+window.addEventListener('unhandledrejection', function(e){
+  console.error('[PROMISE ERROR]', e.reason);
+  alert('ERRO PROMISE:\n' + e.reason);
+});
 firebase.initializeApp({
   apiKey: "AIzaSyBagzNfYn0p1VBavrYGZ3IV9kXxhiSt5OI",
   authDomain: "totali-precify.firebaseapp.com",
