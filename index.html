@@ -786,11 +786,15 @@ async function saveEmpresa(){
       emp.prods=[];emp.fbase={};emp.params={};emp.fornecedores=[];emp.pedidos=[];
     var ref=await db.collection('empresas').add(emp);
     emp.id=ref.id;empresas.push(emp);
+      // Get current empresasIds and append new one
+      var userSnap2=await db.collection('users').doc(currentUser.uid).get();
+      var existingIds=userSnap2.exists?(userSnap2.data().empresasIds||[]):[];
+      if(existingIds.indexOf(ref.id)<0)existingIds.push(ref.id);
       await db.collection('users').doc(currentUser.uid).set({
         empresaAtiva:ref.id,
         email:currentUser.email,
         updatedAt:new Date().toISOString(),
-        empresasIds:firebase.firestore.FieldValue.arrayUnion(ref.id)
+        empresasIds:existingIds
       },{merge:true});
       await loadEmpresaData(ref.id);
       updateEmpresaSelector();
@@ -852,8 +856,11 @@ async function addMembro(){
     update['membros.'+uid]='admin';
     await db.collection('empresas').doc(curEmpresaId).update(update);
     // Adicionar empresaId ao array do usuário
+    var memSnap=await db.collection('users').doc(uid).get();
+    var memIds=memSnap.exists?(memSnap.data().empresasIds||[]):[];
+    if(memIds.indexOf(curEmpresaId)<0)memIds.push(curEmpresaId);
     await db.collection('users').doc(uid).set({
-      empresasIds:firebase.firestore.FieldValue.arrayUnion(curEmpresaId)
+      empresasIds:memIds
     },{merge:true});
     if(!curEmpresa.membros)curEmpresa.membros={};
     curEmpresa.membros[uid]='admin';
@@ -868,9 +875,10 @@ async function removerMembro(btn){
   if(!uid||!curEmpresaId)return;
   if(!confirm('Remover acesso deste usuário?'))return;
   try{
-    var update={};
-    update['membros.'+uid]=firebase.firestore.FieldValue.delete();
-    await db.collection('empresas').doc(curEmpresaId).update(update);
+    // Rebuild membros without this uid
+    var novosMembros=Object.assign({},curEmpresa.membros||{});
+    delete novosMembros[uid];
+    await db.collection('empresas').doc(curEmpresaId).update({membros:novosMembros});
     if(curEmpresa.membros)delete curEmpresa.membros[uid];
     renderMembros();
     toast('Usuário removido.');
