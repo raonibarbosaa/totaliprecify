@@ -299,6 +299,421 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 <script>
 
+
+// ── CRUZAMENTO PRODUTO × XML ─────────────────────────────
+
+function similaridade(a, b) {
+  a = (a||'').toLowerCase().trim();
+  b = (b||'').toLowerCase().trim();
+  if(a === b) return 1;
+  var longer = a.length > b.length ? a : b;
+  var shorter = a.length > b.length ? b : a;
+  if(longer.length === 0) return 1;
+  var matches = 0;
+  for(var i = 0; i < shorter.length; i++) {
+    if(longer.indexOf(shorter[i]) >= 0) matches++;
+  }
+  return matches / longer.length;
+}
+
+function cruzarProdutoXML(cEAN, cProd, ncm, xProd, fornecedorCNPJ) {
+  var result = {match: 'novo', produtoIdx: null};
+  for(var i = 0; i < prods.length; i++) {
+    var p = prods[i];
+    // 1. EAN exato
+    if(cEAN && cEAN !== 'SEM GTIN' && p.cEAN && p.cEAN === cEAN) {
+      return {match: 'exato', produtoIdx: i, motivo: 'EAN'};
+    }
+    // 2. cProd + CNPJ fornecedor
+    var fornMatch = (p.fornecedoresProd||[]).find(function(f){return f.fornecedorCNPJ===fornecedorCNPJ;});
+    if(cProd && fornMatch && p.cProd === cProd) {
+      return {match: 'exato', produtoIdx: i, motivo: 'Código+Fornecedor'};
+    }
+    // 3. NCM + nome similar
+    if(ncm && p.ncm === ncm) {
+      var sim = similaridade(xProd, p.desc);
+      if(sim >= 0.7) {
+        result = {match: 'provavel', produtoIdx: i, motivo: 'NCM+Nome ('+Math.round(sim*100)+'%)'};
+      }
+    }
+  }
+  return result;
+}
+
+function atualizarFornecedorProd(prodIdx, fornData, notaData) {
+  if(!prods[prodIdx]) return;
+  var p = prods[prodIdx];
+  if(!p.fornecedoresProd) p.fornecedoresProd = [];
+  var existing = p.fornecedoresProd.findIndex(function(f){return f.fornecedorCNPJ===fornData.cnpj;});
+  var fornEntry = {
+    fornecedorCNPJ: fornData.cnpj,
+    razaoSocial: fornData.razaoSocial,
+    precoUltCompra: notaData.vUnCom,
+    dataUltCompra: notaData.dataEmissao,
+    notaFiscalChave: notaData.chaveNFe,
+    notaFiscalNum: notaData.numero,
+    principal: existing < 0 && p.fornecedoresProd.length === 0
+  };
+  if(existing >= 0) {
+    p.fornecedoresProd[existing] = Object.assign(p.fornecedoresProd[existing], fornEntry);
+  } else {
+    p.fornecedoresProd.push(fornEntry);
+  }
+  // Atualizar custo se fornecedor principal
+  if(fornEntry.principal || p.fornecedoresProd[existing]&&p.fornecedoresProd[existing].principal) {
+    p.custo = notaData.vUnCom;
+  }
+}
+
+// ── XML IMPORT ATUALIZADO ────────────────────────────────
+
+function pNFe(xml){
+  try{
+    var doc=new DOMParser().parseFromString(xml,'text/xml');
+    function gvd(el,tag){var n=el.getElementsByTagName(tag)[0];return n?n.textContent:'';}
+    // Emitente
+    var emitEl=doc.getElementsByTagName('emit')[0]||doc;
+    var emitCNPJ=gvd(emitEl,'CNPJ')||gv2(doc,'CNPJ');
+    var emitNome=gvd(emitEl,'xNome')||gv2(doc,'xNome');
+    var emitIE=gvd(emitEl,'IE')||'';
+    // Destinatário
+    var destEl=doc.getElementsByTagName('dest')[0]||doc;
+    var destCNPJ=gvd(destEl,'CNPJ')||'';
+    var destNome=gvd(destEl,'xNome')||'';
+    // Cabeçalho
+    var ideEl=doc.getElementsByTagName('ide')[0]||doc;
+    var chaveEl=doc.getElementsByTagName('chNFe')[0];
+    var chave=chaveEl?chaveEl.textContent:'';
+    var numero=gvd(ideEl,'nNF')||'';
+    var serie=gvd(ideEl,'serie')||'';
+    var dataEmissao=(gvd(ideEl,'dhEmi')||gvd(ideEl,'dEmi')||'').slice(0,10);
+    var natOp=gvd(ideEl,'natOp')||'';
+    // Totais
+    var totEl=doc.getElementsByTagName('ICMSTot')[0]||doc;
+    var vNF=parseFloat(gvd(doc,'vNF')||'0');
+    var vProd_t=parseFloat(gvd(totEl,'vProd')||'0');
+    var vST_tot=parseFloat(gvd(totEl,'vST')||'0');
+    var vIPI_tot=parseFloat(gvd(totEl,'vIPI')||'0');
+    var vFrete=parseFloat(gvd(totEl,'vFrete')||'0');
+
+    // Verificar duplicata
+    var jaSalva=notasFiscais.find(function(n){return n.chaveNFe===chave;});
+    if(jaSalva){toast('NF-'+numero+' já importada!');return;}
+
+    // Salvar fornecedor
+    salvarFornecedorAutoXML(emitNome,emitCNPJ);
+
+    var dets=doc.getElementsByTagName('det');
+    if(!dets.length){toast('XML sem itens.');return;}
+
+    var itensNota=[];
+    var novos=0, atualizados=0, provaveis=[];
+
+    Array.from(dets).forEach(function(det){
+      var cProdXML=gv2(det,'cProd');
+      var cEAN=gv2(det,'cEAN')||gv2(det,'cEANTrib')||'';
+      var xProd=gv2(det,'xProd');
+      var ncm=gv2(det,'NCM');
+      var cfop=gv2(det,'CFOP');
+      var unidade=gv2(det,'uCom');
+      var qtd=parseFloat(gv2(det,'qCom')||'1');
+      var vUnCom=parseFloat(gv2(det,'vUnCom')||'0');
+      var vProd=parseFloat(gv2(det,'vProd')||'0');
+      var vSTi=parseFloat(gv2(det,'vICMSST')||'0');
+      var vIPIi=parseFloat(gv2(det,'vIPI')||'0');
+      var pICMS=parseFloat(gv2(det,'pICMS')||'0');
+      var stEf=vUnCom>0&&vSTi>0?(vSTi/vUnCom)*100:0;
+
+      var notaItemData={
+        chaveNFe:chave, numero:numero,
+        dataEmissao:dataEmissao, vUnCom:vUnCom
+      };
+
+      var item={
+        cProd:cProdXML, cEAN:cEAN, xProd:xProd, ncm:ncm, cfop:cfop,
+        unidade:unidade, quantidade:qtd, vUnCom:vUnCom, vProd:vProd,
+        vIPI:vIPIi, vST:vSTi, produtoId:null
+      };
+
+      var cruz=cruzarProdutoXML(cEAN,cProdXML,ncm,xProd,emitCNPJ);
+
+      if(cruz.match==='exato'){
+        // Atualizar fornecedor no produto existente
+        atualizarFornecedorProd(cruz.produtoIdx,{cnpj:emitCNPJ,razaoSocial:emitNome},notaItemData);
+        item.produtoId='idx:'+cruz.produtoIdx;
+        atualizados++;
+      } else if(cruz.match==='provavel'){
+        // Adicionar à lista de prováveis duplicatas
+        provaveis.push({item:item,produtoIdx:cruz.produtoIdx,motivo:cruz.motivo,xProd:xProd});
+        item.produtoId=null;
+        // Ainda adicionar aos impProds com flag
+        impProds.push({
+          desc:xProd,ncm:ncm,cest:gv2(det,'CEST'),cEAN:cEAN,cProd:cProdXML,codigoInt:cProdXML,
+          custo:vUnCom,ipi:vIPIi>0&&vUnCom>0?(vIPIi/vUnCom)*100:0,freteEntrada:0,markup:0,
+          alqInt:pICMS,alqOrig:0,temST:vSTi>0,stEf:parseFloat(stEf.toFixed(4)),
+          tipoProd:vSTi>0?'st':'tributado',
+          notaFiscalChave:chave,notaFiscalNum:numero,
+          _provavelDuplicata:true,_produtoIdxSugerido:cruz.produtoIdx,_motivo:cruz.motivo,
+          fornecedoresProd:[{fornecedorCNPJ:emitCNPJ,razaoSocial:emitNome,
+            precoUltCompra:vUnCom,dataUltCompra:dataEmissao,
+            notaFiscalChave:chave,notaFiscalNum:numero,principal:true}],
+          concorrentes:[],precoVenda:null,margemReal:null,metodo:null
+        });
+      } else {
+        // Produto novo
+        impProds.push({
+          desc:xProd,ncm:ncm,cest:gv2(det,'CEST'),cEAN:cEAN,cProd:cProdXML,codigoInt:cProdXML,
+          custo:vUnCom,ipi:vIPIi>0&&vUnCom>0?(vIPIi/vUnCom)*100:0,freteEntrada:0,markup:0,
+          alqInt:pICMS,alqOrig:0,temST:vSTi>0,stEf:parseFloat(stEf.toFixed(4)),
+          tipoProd:vSTi>0?'st':'tributado',
+          notaFiscalChave:chave,notaFiscalNum:numero,
+          fornecedoresProd:[{fornecedorCNPJ:emitCNPJ,razaoSocial:emitNome,
+            precoUltCompra:vUnCom,dataUltCompra:dataEmissao,
+            notaFiscalChave:chave,notaFiscalNum:numero,principal:true}],
+          concorrentes:[],precoVenda:null,margemReal:null,metodo:null
+        });
+        novos++;
+      }
+      itensNota.push(item);
+    });
+
+    // Salvar nota fiscal
+    var nota={
+      id:gerarId(),chaveNFe:chave,numero:numero,serie:serie,
+      dataEmissao:dataEmissao,naturezaOp:natOp,status:'importada',
+      fornecedor:{razaoSocial:emitNome,cnpj:emitCNPJ,ie:emitIE},
+      destinatario:{cnpj:destCNPJ,razaoSocial:destNome},
+      totais:{vNF:vNF,vProd:vProd_t,vST:vST_tot,vIPI:vIPI_tot,vFrete:vFrete},
+      itens:itensNota,importadoEm:new Date().toISOString()
+    };
+    notasFiscais.push(nota);
+    svNotasFiscais();
+    if(atualizados>0)sv();
+
+    var msg='NF-'+numero+' importada!';
+    if(atualizados>0)msg+=' '+atualizados+' produto(s) atualizados.';
+    if(novos>0)msg+=' '+novos+' novo(s) para cadastrar.';
+    if(provaveis.length>0)msg+=' '+provaveis.length+' possível(is) duplicata(s).';
+    toast(msg);
+    ren();setTimeout(function(){setupXML();},60);
+  }catch(ex){toast('Erro XML: '+ex.message);}
+}
+
+// ── NOTAS FISCAIS — TELA COMPLETA ────────────────────────
+
+var notaFiltroMes='', notaFiltroForn='', notaFiltroBusca='';
+
+function rNotas(){
+  var lista=notasFiscais.slice().reverse();
+  if(notaFiltroMes)lista=lista.filter(function(n){return(n.dataEmissao||'').slice(0,7)===notaFiltroMes;});
+  if(notaFiltroForn)lista=lista.filter(function(n){return n.fornecedor&&n.fornecedor.cnpj===notaFiltroForn;});
+  if(notaFiltroBusca){
+    var q=notaFiltroBusca.toLowerCase();
+    lista=lista.filter(function(n){
+      return(n.numero||'').includes(q)
+        ||(n.fornecedor&&(n.fornecedor.razaoSocial||'').toLowerCase().includes(q))
+        ||(n.itens||[]).some(function(it){return(it.xProd||'').toLowerCase().includes(q);});
+    });
+  }
+  var meses=[...new Set(notasFiscais.map(function(n){return(n.dataEmissao||'').slice(0,7);}).filter(Boolean))].sort().reverse();
+  var mesesOpts='<option value="">Todos os meses</option>'+meses.map(function(m){
+    return'<option value="'+m+'"'+(notaFiltroMes===m?' selected':'')+'>'+m+'</option>';
+  }).join('');
+  var fornCNPJs=[...new Set(notasFiscais.map(function(n){return n.fornecedor&&n.fornecedor.cnpj;}).filter(Boolean))];
+  var fornOpts='<option value="">Todos os fornecedores</option>'+fornCNPJs.map(function(cnpj){
+    var nf=notasFiscais.find(function(n){return n.fornecedor&&n.fornecedor.cnpj===cnpj;});
+    var nome=nf?nf.fornecedor.razaoSocial:cnpj;
+    return'<option value="'+cnpj+'"'+(notaFiltroForn===cnpj?' selected':'')+'>'+esc(nome)+'</option>';
+  }).join('');
+
+  // Totalizadores
+  var totNF=lista.reduce(function(a,n){return a+(n.totais&&n.totais.vNF||0);},0);
+  var totST=lista.reduce(function(a,n){return a+(n.totais&&n.totais.vST||0);},0);
+
+  return'<div class="card">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+    +'<div class="ct" style="margin-bottom:0">Notas Fiscais</div>'
+    +'<div style="font-size:10px;color:var(--t2)">'+notasFiscais.length+' nota(s) importada(s)</div>'
+    +'</div>'
+    +'<div class="g3f" style="margin-bottom:12px">'
+    +'<div class="f"><label>Buscar</label><input id="nota-busca" placeholder="Número, fornecedor, produto..." value="'+esc(notaFiltroBusca)+'" oninput="notaFiltroBusca=this.value;ren()"></div>'
+    +'<div class="f"><label>Mês/Ano</label><select id="nota-mes" onchange="notaFiltroMes=this.value;ren()">'+mesesOpts+'</select></div>'
+    +'<div class="f"><label>Fornecedor</label><select id="nota-forn" onchange="notaFiltroForn=this.value;ren()">'+fornOpts+'</select></div>'
+    +'</div>'
+    +(lista.length>0?'<div class="g4" style="margin-bottom:12px">'
+    +'<div class="stat"><div class="sv svd">'+lista.length+'</div><div class="sl">Notas</div></div>'
+    +'<div class="stat"><div class="sv svb">'+lista.reduce(function(a,n){return a+(n.itens||[]).length;},0)+'</div><div class="sl">Itens</div></div>'
+    +'<div class="stat"><div class="sv svg2">'+fR(totNF)+'</div><div class="sl">Total compras</div></div>'
+    +'<div class="stat"><div class="sv svy">'+fR(totST)+'</div><div class="sl">Total ST</div></div>'
+    +'</div>':'')
+    +(lista.length===0?'<div class="empty">Nenhuma nota encontrada. Importe um XML na aba "Importar XML".</div>'
+    :'<div style="overflow-x:auto"><table>'
+    +'<tr><th>NF</th><th>Fornecedor</th><th>Data</th><th>Nat. Op.</th><th>Itens</th><th>Total</th><th>ST</th><th>IPI</th><th>Frete</th><th>Status</th><th></th></tr>'
+    +lista.map(function(n){
+      var realIdx=notasFiscais.indexOf(n);
+      var vinculados=(n.itens||[]).filter(function(it){return it.produtoId;}).length;
+      var total=(n.itens||[]).length;
+      var stLabel=vinculados===total&&total>0?'<span class="badge bgg">Vinculada</span>':vinculados>0?'<span class="badge bgold">Parcial</span>':'<span class="badge byy">Pendente</span>';
+      return'<tr>'
+        +'<td><span class="tag">NF-'+esc(n.numero||'—')+'/'+esc(n.serie||'1')+'</span></td>'
+        +'<td style="font-size:10px;max-width:140px;overflow:hidden;text-overflow:ellipsis;font-weight:600">'+(n.fornecedor?esc(n.fornecedor.razaoSocial):'—')+'</td>'
+        +'<td style="font-family:var(--mono);font-size:9px">'+(n.dataEmissao||'—')+'</td>'
+        +'<td style="font-size:9px;color:var(--t2)">'+(n.naturezaOp||'—')+'</td>'
+        +'<td style="text-align:center;font-family:var(--mono)">'+vinculados+'/'+total+'</td>'
+        +'<td style="font-family:var(--mono)">'+fR(n.totais&&n.totais.vNF||0)+'</td>'
+        +'<td style="font-family:var(--mono)">'+(n.totais&&n.totais.vST>0?'<span style="color:var(--warn)">'+fR(n.totais.vST)+'</span>':'—')+'</td>'
+        +'<td style="font-family:var(--mono)">'+(n.totais&&n.totais.vIPI>0?fR(n.totais.vIPI):'—')+'</td>'
+        +'<td style="font-family:var(--mono)">'+(n.totais&&n.totais.vFrete>0?fR(n.totais.vFrete):'—')+'</td>'
+        +'<td>'+stLabel+'</td>'
+        +'<td style="display:flex;gap:4px">'
+        +'<button class="btn xs p" data-idx="'+realIdx+'" onclick="verNota(this)">Ver</button>'
+        +'<button class="btn xs g" data-idx="'+realIdx+'" onclick="exportNotaXLS(this)">Excel</button>'
+        +'<button class="btn xs d" data-idx="'+realIdx+'" onclick="excluirNota(this)">&times;</button>'
+        +'</td></tr>';
+    }).join('')+'</table></div>')
+    +'</div>';
+}
+
+function verNota(btn){
+  var idx=parseInt(btn.getAttribute('data-idx'));
+  var n=notasFiscais[idx];if(!n)return;
+  var ov=document.createElement('div');ov.className='overlay';ov.id='notaov';
+  var prodOpts='<option value="">-- Vincular produto --</option>'+prods.map(function(p,pi){
+    return'<option value="'+pi+'">'+esc(p.desc)+'</option>';
+  }).join('');
+  var itensHtml=(n.itens||[]).map(function(it,ii){
+    var vinc=null;
+    if(it.produtoId&&typeof it.produtoId==='string'&&it.produtoId.startsWith('idx:')){
+      var pidx=parseInt(it.produtoId.replace('idx:',''));
+      vinc=prods[pidx];
+    } else if(it.produtoId!==null&&it.produtoId!==undefined&&typeof it.produtoId==='number'){
+      vinc=prods[it.produtoId];
+    }
+    return'<tr>'
+      +'<td><span class="tag">'+esc(it.cProd||'—')+'</span></td>'
+      +'<td style="font-size:9px;color:var(--t2)">'+(it.cEAN&&it.cEAN!=='SEM GTIN'?esc(it.cEAN):'—')+'</td>'
+      +'<td style="font-weight:600;max-width:150px;overflow:hidden;text-overflow:ellipsis">'+esc(it.xProd||'—')+'</td>'
+      +'<td><span class="tag">'+(it.ncm||'—')+'</span></td>'
+      +'<td style="font-family:var(--mono)">'+(it.quantidade||0)+' '+(it.unidade||'')+'</td>'
+      +'<td style="font-family:var(--mono)">'+fR(it.vUnCom||0)+'</td>'
+      +'<td style="font-family:var(--mono)">'+fR(it.vProd||0)+'</td>'
+      +'<td>'+(it.vST>0?'<span style="color:var(--warn)">'+fR(it.vST)+'</span>':'—')+'</td>'
+      +'<td>'+(vinc?'<span class="badge bgg" style="font-size:9px">'+esc(vinc.desc.slice(0,20))+'</span>'
+        :'<select style="background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:3px 6px;color:var(--text);font-size:9px;max-width:150px" data-nota="'+idx+'" data-item="'+ii+'" onchange="vincularProdNota(this)">'
+        +prodOpts+'</select>')+'</td>'
+      +'</tr>';
+  }).join('');
+
+  ov.innerHTML='<div class="modal modal-lg">'
+    +'<div class="mt2">NF-'+esc(n.numero||'—')+' / Série '+esc(n.serie||'—')+'</div>'
+    +'<div class="ms2">'+(n.fornecedor?esc(n.fornecedor.razaoSocial):'—')
+    +' · CNPJ: '+(n.fornecedor?fCNPJ(n.fornecedor.cnpj||''):'—')
+    +' · '+esc(n.dataEmissao||'—')+'</div>'
+    +'<div class="g4" style="margin-bottom:10px">'
+    +pbr('Valor total',fR(n.totais&&n.totais.vNF||0))
+    +pbr('ICMS ST',fR(n.totais&&n.totais.vST||0))
+    +pbr('IPI',fR(n.totais&&n.totais.vIPI||0))
+    +pbr('Frete',fR(n.totais&&n.totais.vFrete||0))
+    +'</div>'
+    +'<div style="font-size:9px;color:var(--t3);margin-bottom:8px;font-family:var(--mono);word-break:break-all">Chave: '+esc(n.chaveNFe||'—')+'</div>'
+    +'<div style="overflow-x:auto"><table>'
+    +'<tr><th>Cód.</th><th>EAN</th><th>Produto</th><th>NCM</th><th>Qtd</th><th>Vl.unit</th><th>Total</th><th>ST</th><th>Produto vinculado</th></tr>'
+    +itensHtml+'</table></div>'
+    +'<div class="btns" style="margin-top:10px">'
+    +'<button class="btn g" data-idx="'+idx+'" onclick="exportNotaXLS(this)">Excel</button>'
+    +'<button class="btn" onclick="this.closest(\'.overlay\').remove()">Fechar</button>'
+    +'</div></div>';
+  document.body.appendChild(ov);
+}
+
+function vincularProdNota(sel){
+  var notaIdx=parseInt(sel.getAttribute('data-nota'));
+  var itemIdx=parseInt(sel.getAttribute('data-item'));
+  var prodIdx=sel.value===''?null:parseInt(sel.value);
+  if(!notasFiscais[notaIdx]||!notasFiscais[notaIdx].itens[itemIdx])return;
+  notasFiscais[notaIdx].itens[itemIdx].produtoId=prodIdx;
+  // Also update product's fornecedor
+  if(prodIdx!==null){
+    var nota=notasFiscais[notaIdx];
+    atualizarFornecedorProd(prodIdx,
+      {cnpj:nota.fornecedor&&nota.fornecedor.cnpj,razaoSocial:nota.fornecedor&&nota.fornecedor.razaoSocial},
+      {chaveNFe:nota.chaveNFe,numero:nota.numero,dataEmissao:nota.dataEmissao,
+       vUnCom:nota.itens[itemIdx].vUnCom}
+    );
+    sv();
+  }
+  svNotasFiscais();
+  toast('Produto vinculado!');
+  // Refresh the modal row
+  sel.closest('td').innerHTML='<span class="badge bgg" style="font-size:9px">'+esc((prods[prodIdx]&&prods[prodIdx].desc||'').slice(0,20))+'</span>';
+}
+
+function excluirNota(btn){
+  if(!confirm('Excluir esta nota fiscal?'))return;
+  var idx=parseInt(btn.getAttribute('data-idx'));
+  notasFiscais.splice(idx,1);
+  svNotasFiscais();
+  ren();
+  toast('Nota excluída.');
+}
+
+function exportNotaXLS(btn){
+  if(typeof XLSX==='undefined'){toast('Excel requer conexão.');return;}
+  var idx=parseInt(btn.getAttribute('data-idx'));
+  var n=notasFiscais[idx];if(!n)return;
+  var wb=XLSX.utils.book_new();
+  var h=['Código','EAN','Produto','NCM','CFOP','Unidade','Quantidade','Valor unit.','Valor total','IPI','ST','Produto vinculado'];
+  var d=(n.itens||[]).map(function(it){
+    var vinc=it.produtoId!==null&&typeof it.produtoId==='number'?prods[it.produtoId]:null;
+    return[it.cProd||'',it.cEAN||'',it.xProd||'',it.ncm||'',it.cfop||'',
+      it.unidade||'',it.quantidade||0,it.vUnCom||0,it.vProd||0,
+      it.vIPI||0,it.vST||0,vinc?vinc.desc:''];
+  });
+  var ws=XLSX.utils.aoa_to_sheet([h].concat(d));
+  XLSX.utils.book_append_sheet(wb,ws,'Itens');
+  // Sheet 2 — resumo
+  var h2=['Campo','Valor'];
+  var d2=[
+    ['Número',n.numero||''],['Série',n.serie||''],['Data',n.dataEmissao||''],
+    ['Fornecedor',n.fornecedor&&n.fornecedor.razaoSocial||''],
+    ['CNPJ Fornecedor',n.fornecedor&&fCNPJ(n.fornecedor.cnpj)||''],
+    ['Valor total',n.totais&&n.totais.vNF||0],
+    ['ICMS ST',n.totais&&n.totais.vST||0],
+    ['IPI',n.totais&&n.totais.vIPI||0],
+    ['Frete',n.totais&&n.totais.vFrete||0],
+    ['Chave NF-e',n.chaveNFe||'']
+  ];
+  var ws2=XLSX.utils.aoa_to_sheet([h2].concat(d2));
+  XLSX.utils.book_append_sheet(wb,ws2,'Resumo');
+  XLSX.writeFile(wb,'NF_'+n.numero+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  toast('Excel exportado!');
+}
+
+function filtrarNotasPorForn(cnpj){
+  var sel=document.getElementById('prod_nota_sel');
+  if(!sel)return;
+  var notas=notasFiscais.filter(function(n){return n.fornecedor&&n.fornecedor.cnpj===cnpj;});
+  sel.innerHTML='<option value="">Selecione a nota...</option>'
+    +notas.map(function(n){
+      return'<option value="'+notasFiscais.indexOf(n)+'">NF-'+esc(n.numero)+' ('+n.dataEmissao+')</option>';
+    }).join('');
+}
+
+function preencherCustoDaNota(notaIdx){
+  if(!notaIdx)return;
+  var nota=notasFiscais[parseInt(notaIdx)];
+  if(!nota||!nota.itens||!nota.itens.length)return;
+  var it=nota.itens[0];
+  var sets={fcu:it.vUnCom,fn:it.ncm,fc:it.cest,fci2:it.cProd,fd:it.xProd};
+  Object.keys(sets).forEach(function(id){
+    var el=document.getElementById(id);
+    if(el&&sets[id])el.value=sets[id];
+  });
+  if(document.getElementById('fcu'))atuST();
+  toast('Dados preenchidos da NF-'+nota.numero);
+}
+
+
 // ── FIREBASE AUTH INIT ───────────────────────────────────
 var auth = firebase.auth();
 var db = firebase.firestore();
@@ -492,8 +907,49 @@ async function loadEmpresaData(empId){
       fornecedores=d.fornecedores||[];
       pedidos=d.pedidos||[];
       notasFiscais=d.notasFiscais||[];
+      // Migração automática
+      migrarEmpresa(d, empId);
     }
   }catch(e){console.error('loadEmpresaData:',e);}
+}
+
+function migrarEmpresa(d, empId){
+  var updates={};
+  var precisaMigrar=false;
+  // Garantir campo notasFiscais
+  if(!d.notasFiscais){updates.notasFiscais=[];precisaMigrar=true;}
+  // Garantir campo fornecedores
+  if(!d.fornecedores){updates.fornecedores=[];precisaMigrar=true;}
+  // Garantir campo pedidos
+  if(!d.pedidos){updates.pedidos=[];precisaMigrar=true;}
+  // Adicionar id e cEAN nos produtos existentes
+  var prodsAtualizados=false;
+  var prods2=(d.prods||[]).map(function(p){
+    var changed=false;
+    if(!p.id){p.id=gerarId();changed=true;}
+    if(p.cEAN===undefined){p.cEAN='';changed=true;}
+    if(p.cProd===undefined){p.cProd=p.codigoInt||'';changed=true;}
+    if(!p.fornecedoresProd||!Array.isArray(p.fornecedoresProd)){
+      p.fornecedoresProd=[];changed=true;
+    }
+    // Migrar fornecedoresProd antigos (tinham fornecedorId em vez de fornecedorCNPJ)
+    p.fornecedoresProd=p.fornecedoresProd.map(function(f){
+      if(f.fornecedorId&&!f.fornecedorCNPJ){
+        var forn=fornecedores.find(function(fn){return fn.id===f.fornecedorId;});
+        if(forn){f.fornecedorCNPJ=forn.cnpj;f.razaoSocial=forn.razaoSocial;}
+        changed=true;
+      }
+      return f;
+    });
+    if(changed)prodsAtualizados=true;
+    return p;
+  });
+  if(prodsAtualizados){updates.prods=prods2;prods=prods2;precisaMigrar=true;}
+  if(precisaMigrar){
+    db.collection('empresas').doc(empId).set(updates,{merge:true})
+      .then(function(){console.log('Migração OK para empresa',empId);})
+      .catch(function(e){console.error('Erro migração:',e);});
+  }
 }
 
 async function loadUserEmpresas(){
@@ -1005,33 +1461,9 @@ function rForn(){
     }).join('')+'</table></div></div>')+'</div>'
     +'<div id="ff2" style="display:none">'+bFornForm()+'</div>';
 }
-function filtrarNotasPorForn(cnpj){
-  var sel=document.getElementById('prod_nota_sel');
-  if(!sel)return;
-  var notas=notasFiscais.filter(function(n){return n.fornecedor&&n.fornecedor.cnpj===cnpj;});
-  sel.innerHTML='<option value="">Selecione a nota...</option>'
-    +notas.map(function(n,i){
-      return'<option value="'+notasFiscais.indexOf(n)+'">NF-'+esc(n.numero)+' ('+n.dataEmissao+')</option>';
-    }).join('');
-}
 
-function preencherCustoDaNota(notaIdx){
-  if(!notaIdx)return;
-  var nota=notasFiscais[parseInt(notaIdx)];
-  if(!nota||!nota.itens||!nota.itens.length)return;
-  // Preencher com primeiro item da nota
-  var it=nota.itens[0];
-  var cu=document.getElementById('fcu');
-  var fn2=document.getElementById('fn');
-  var fc=document.getElementById('fc');
-  var fci2=document.getElementById('fci2');
-  if(cu&&it.vUnCom)cu.value=it.vUnCom;
-  if(fn2&&it.ncm)fn2.value=it.ncm;
-  if(fc&&it.cest)fc.value=it.cest;
-  if(fci2&&it.cProd)fci2.value=it.cProd;
-  if(cu)atuST();
-  toast('Dados preenchidos da NF-'+nota.numero);
-}
+
+
 
 function stabF2(idx){
   var fl=document.getElementById('fl'),ff2=document.getElementById('ff2');
@@ -1552,84 +1984,7 @@ function setupXML(){
 }
 function pFiles(files){Array.from(files).forEach(function(f){var r=new FileReader();r.onload=function(e){pNFe(e.target.result);};r.readAsText(f,'UTF-8');});}
 function gv2(el,tag){var n=el.getElementsByTagName(tag)[0];return n?n.textContent:'';}
-function pNFe(xml){
-  try{
-    var doc=new DOMParser().parseFromString(xml,'text/xml');
-    function gvd(el,tag){var n=el.getElementsByTagName(tag)[0];return n?n.textContent:'';}
-    // Emitente
-    var emitEl=doc.getElementsByTagName('emit')[0]||doc;
-    var emitCNPJ=gvd(emitEl,'CNPJ')||gv2(doc,'CNPJ');
-    var emitNome=gvd(emitEl,'xNome')||gv2(doc,'xNome');
-    var emitIE=gvd(emitEl,'IE')||'';
-    // Destinatário
-    var destEl=doc.getElementsByTagName('dest')[0]||doc;
-    var destCNPJ=gvd(destEl,'CNPJ')||'';
-    var destNome=gvd(destEl,'xNome')||'';
-    // Dados da nota
-    var ideEl=doc.getElementsByTagName('ide')[0]||doc;
-    var chaveEl=doc.getElementsByTagName('chNFe')[0];
-    var chave=chaveEl?chaveEl.textContent:'';
-    var numero=gvd(ideEl,'nNF')||'';
-    var serie=gvd(ideEl,'serie')||'';
-    var dataEmissao=(gvd(ideEl,'dhEmi')||gvd(ideEl,'dEmi')||'').slice(0,10);
-    var natOp=gvd(ideEl,'natOp')||'';
-    // Totais
-    var totEl=doc.getElementsByTagName('ICMSTot')[0]||doc;
-    var vNF=parseFloat(gvd(doc,'vNF')||'0');
-    var vProd=parseFloat(gvd(totEl,'vProd')||'0');
-    var vST_tot=parseFloat(gvd(totEl,'vST')||'0');
-    var vIPI_tot=parseFloat(gvd(totEl,'vIPI')||'0');
-    var vFrete=parseFloat(gvd(totEl,'vFrete')||'0');
-    // Verificar duplicata
-    if(chave&&notasFiscais.find(function(n){return n.chaveNFe===chave;})){
-      toast('Nota fiscal '+numero+' já importada anteriormente.');
-    }
-    // Salvar fornecedor
-    salvarFornecedorAutoXML(emitNome,emitCNPJ);
-    // Processar itens
-    var dets=doc.getElementsByTagName('det');
-    if(!dets.length){toast('XML sem itens.');return;}
-    var itensNota=[];
-    Array.from(dets).forEach(function(det){
-      var vSTi=parseFloat(gv2(det,'vICMSST')||'0');
-      var vIPIi=parseFloat(gv2(det,'vIPI')||'0');
-      var cu=parseFloat(gv2(det,'vUnCom')||'0');
-      var qtd=parseFloat(gv2(det,'qCom')||'1');
-      var stEf=cu>0&&vSTi>0?(vSTi/cu)*100:0;
-      var item={
-        cProd:gv2(det,'cProd'),xProd:gv2(det,'xProd'),ncm:gv2(det,'NCM'),
-        cest:gv2(det,'CEST'),cfop:gv2(det,'CFOP'),unidade:gv2(det,'uCom'),
-        quantidade:qtd,vUnCom:cu,vProd:parseFloat(gv2(det,'vProd')||'0'),
-        vIPI:vIPIi,vST:vSTi,produtoId:null
-      };
-      itensNota.push(item);
-      impProds.push({desc:item.xProd,ncm:item.ncm,cest:item.cest,codigoInt:item.cProd,
-        custo:cu,ipi:vIPIi>0&&cu>0?(vIPIi/cu)*100:0,freteEntrada:0,markup:0,
-        alqInt:parseFloat(gv2(det,'pICMS')||'0'),alqOrig:0,
-        temST:vSTi>0,stEf:parseFloat(stEf.toFixed(4)),
-        tipoProd:vSTi>0?'st':'tributado',
-        notaFiscalChave:chave,notaFiscalNum:numero,
-        fornecedoresProd:[{fornecedorId:emitCNPJ,precoUltCompra:cu,
-          dataUltCompra:dataEmissao||new Date().toISOString().slice(0,10),principal:true}],
-        concorrentes:[],precoVenda:null,margemReal:null,metodo:null});
-    });
-    // Salvar nota fiscal completa
-    if(!chave||!notasFiscais.find(function(n){return n.chaveNFe===chave;})){
-      var nota={
-        id:gerarId(),chaveNFe:chave,numero:numero,serie:serie,
-        dataEmissao:dataEmissao,naturezaOp:natOp,
-        fornecedor:{razaoSocial:emitNome,cnpj:emitCNPJ,ie:emitIE},
-        destinatario:{cnpj:destCNPJ,razaoSocial:destNome},
-        totais:{vNF:vNF,vProd:vProd,vST:vST_tot,vIPI:vIPI_tot,vFrete:vFrete},
-        itens:itensNota,importadoEm:new Date().toISOString()
-      };
-      notasFiscais.push(nota);
-      svNotasFiscais();
-    }
-    ren();setTimeout(function(){setupXML();},60);
-    toast('XML importado: NF '+numero+' - '+emitNome);
-  }catch(ex){toast('Erro XML: '+ex.message);}
-}
+
 function rImp(){
   return'<div class="card"><div class="ct">'+impProds.length+' produto(s) importado(s)</div>'
     +impProds.map(function(p,i){
@@ -1648,120 +2003,15 @@ function saveImp(i){
 }
 
 // ── NOTAS FISCAIS ─────────────────────────────────────────
-var notaFiltroMes='', notaFiltroForn='', notaFiltroBusca='';
 
-function rNotas(){
-  var lista=notasFiscais.slice().reverse();
-  // Filtros
-  if(notaFiltroMes)lista=lista.filter(function(n){return(n.dataEmissao||'').slice(0,7)===notaFiltroMes;});
-  if(notaFiltroForn)lista=lista.filter(function(n){return n.fornecedor&&n.fornecedor.cnpj===notaFiltroForn;});
-  if(notaFiltroBusca){
-    var q=notaFiltroBusca.toLowerCase();
-    lista=lista.filter(function(n){
-      return(n.numero||'').includes(q)
-        ||(n.fornecedor&&(n.fornecedor.razaoSocial||'').toLowerCase().includes(q))
-        ||(n.itens||[]).some(function(it){return(it.xProd||'').toLowerCase().includes(q);});
-    });
-  }
-  // Meses únicos para filtro
-  var meses=[...new Set(notasFiscais.map(function(n){return(n.dataEmissao||'').slice(0,7);}).filter(Boolean))].sort().reverse();
-  var mesesOpts='<option value="">Todos os meses</option>'+meses.map(function(m){
-    return'<option value="'+m+'"'+(notaFiltroMes===m?' selected':'')+'>'+m+'</option>';
-  }).join('');
-  var fornOpts='<option value="">Todos os fornecedores</option>'+fornecedores.map(function(f){
-    return'<option value="'+f.cnpj+'"'+(notaFiltroForn===f.cnpj?' selected':'')+'>'+esc(f.razaoSocial)+'</option>';
-  }).join('');
-  return'<div class="card">'
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
-    +'<div class="ct" style="margin-bottom:0">Notas Fiscais</div>'
-    +'<div style="font-size:10px;color:var(--t2)">'+notasFiscais.length+' nota(s) importada(s)</div>'
-    +'</div>'
-    +'<div class="g3f" style="margin-bottom:12px">'
-    +'<div class="f"><label>Buscar</label><input id="nota-busca" placeholder="Número, fornecedor, produto..." value="'+esc(notaFiltroBusca)+'" oninput="notaFiltroBusca=this.value;ren()"></div>'
-    +'<div class="f"><label>Mês/Ano</label><select id="nota-mes" onchange="notaFiltroMes=this.value;ren()">'+mesesOpts+'</select></div>'
-    +'<div class="f"><label>Fornecedor</label><select id="nota-forn" onchange="notaFiltroForn=this.value;ren()">'+fornOpts+'</select></div>'
-    +'</div>'
-    +(lista.length===0?'<div class="empty">Nenhuma nota encontrada.</div>'
-    :'<div style="overflow-x:auto"><table>'
-    +'<tr><th>Número</th><th>Fornecedor</th><th>Data</th><th>Itens</th><th>Valor total</th><th>ST</th><th>IPI</th><th>Frete</th><th></th></tr>'
-    +lista.map(function(n,i){
-      var realIdx=notasFiscais.indexOf(n);
-      return'<tr>'
-        +'<td><span class="tag">NF-'+esc(n.numero||'—')+'</span></td>'
-        +'<td style="font-family:var(--sans);font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis">'+(n.fornecedor?esc(n.fornecedor.razaoSocial):'—')+'</td>'
-        +'<td style="font-family:var(--mono);font-size:9px">'+(n.dataEmissao||'—')+'</td>'
-        +'<td style="text-align:center">'+(n.itens||[]).length+'</td>'
-        +'<td>'+fR(n.totais&&n.totais.vNF||0)+'</td>'
-        +'<td>'+fR(n.totais&&n.totais.vST||0)+'</td>'
-        +'<td>'+fR(n.totais&&n.totais.vIPI||0)+'</td>'
-        +'<td>'+fR(n.totais&&n.totais.vFrete||0)+'</td>'
-        +'<td style="display:flex;gap:4px">'
-        +'<button class="btn xs p" data-idx="'+realIdx+'" onclick="verNota(this)">Ver</button>'
-        +'<button class="btn xs g" data-idx="'+realIdx+'" onclick="exportNotaXLS(this)">Excel</button>'
-        +'</td></tr>';
-    }).join('')+'</table></div>')
-    +'</div>';
-}
 
-function verNota(btn){
-  var idx=parseInt(btn.getAttribute('data-idx'));
-  var n=notasFiscais[idx];if(!n)return;
-  var ov=document.createElement('div');ov.className='overlay';ov.id='notaov';
-  var prodOpts=prods.map(function(p,pi){return'<option value="'+pi+'">'+esc(p.desc)+'</option>';}).join('');
-  ov.innerHTML='<div class="modal modal-lg">'
-    +'<div class="mt2">NF-'+esc(n.numero||'—')+' / Série '+esc(n.serie||'—')+'</div>'
-    +'<div class="ms2">'+(n.fornecedor?esc(n.fornecedor.razaoSocial):'—')+' &middot; '+(n.dataEmissao||'—')+' &middot; '+esc(n.naturezaOp||'')+'</div>'
-    +'<div class="g4" style="margin-bottom:12px">'
-    +pbr('Valor total',fR(n.totais&&n.totais.vNF||0))
-    +pbr('ICMS ST',fR(n.totais&&n.totais.vST||0))
-    +pbr('IPI',fR(n.totais&&n.totais.vIPI||0))
-    +pbr('Frete',fR(n.totais&&n.totais.vFrete||0))
-    +'</div>'
-    +'<div style="font-size:9px;color:var(--t3);margin-bottom:8px;font-family:var(--mono)">Chave: '+esc(n.chaveNFe||'—')+'</div>'
-    +'<div class="card"><div class="ct">'+( n.itens||[]).length+' item(ns)</div>'
-    +'<div style="overflow-x:auto"><table>'
-    +'<tr><th>Código</th><th>Produto</th><th>NCM</th><th>Qtd</th><th>Vl. unit.</th><th>Total</th><th>ST</th><th>Vincular produto</th></tr>'
-    +(n.itens||[]).map(function(it,ii){
-      var vinc=it.produtoId!==null&&it.produtoId!==undefined?prods[it.produtoId]:null;
-      return'<tr>'
-        +'<td><span class="tag">'+esc(it.cProd||'—')+'</span></td>'
-        +'<td style="font-family:var(--sans);font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis">'+esc(it.xProd||'—')+'</td>'
-        +'<td><span class="tag">'+(it.ncm||'—')+'</span></td>'
-        +'<td style="font-family:var(--mono)">'+(it.quantidade||0)+'</td>'
-        +'<td>'+fR(it.vUnCom||0)+'</td>'
-        +'<td>'+fR(it.vProd||0)+'</td>'
-        +'<td>'+fR(it.vST||0)+'</td>'
-        +'<td><select style="background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:3px 6px;color:var(--text);font-size:9px;max-width:140px" onchange="vincularProdNota('+idx+','+ii+',this.value)">'
-        +'<option value="">'+( vinc?esc(vinc.desc):'Vincular...')+'</option>'+prodOpts+'</select></td>'
-        +'</tr>';
-    }).join('')+'</table></div></div>'
-    +'<div class="btns"><button class="btn" onclick="clsOv(&quot;notaov&quot;)">Fechar</button></div>'
-    +'</div>';
-  document.body.appendChild(ov);
-}
 
-function vincularProdNota(notaIdx,itemIdx,prodIdx){
-  if(!notasFiscais[notaIdx]||!notasFiscais[notaIdx].itens[itemIdx])return;
-  notasFiscais[notaIdx].itens[itemIdx].produtoId=prodIdx===''?null:parseInt(prodIdx);
-  svNotasFiscais();
-  toast('Produto vinculado!');
-}
 
-function exportNotaXLS(btn){
-  if(typeof XLSX==='undefined'){toast('Excel requer conexão.');return;}
-  var idx=parseInt(btn.getAttribute('data-idx'));
-  var n=notasFiscais[idx];if(!n)return;
-  var wb=XLSX.utils.book_new();
-  var h=['Código','Produto','NCM','CFOP','Unidade','Quantidade','Valor unit.','Valor total','IPI','ST'];
-  var d=(n.itens||[]).map(function(it){
-    return[it.cProd||'',it.xProd||'',it.ncm||'',it.cfop||'',it.unidade||'',
-      it.quantidade||0,it.vUnCom||0,it.vProd||0,it.vIPI||0,it.vST||0];
-  });
-  var ws=XLSX.utils.aoa_to_sheet([h].concat(d));
-  XLSX.utils.book_append_sheet(wb,ws,'Itens NF-'+n.numero);
-  XLSX.writeFile(wb,'NF_'+n.numero+'_'+esc(n.fornecedor&&n.fornecedor.razaoSocial||'').slice(0,20).replace(/ /g,'_')+'.xlsx');
-  toast('Excel exportado!');
-}
+
+
+
+
+
 
 // ── FORMAÇÃO DE PREÇO ─────────────────────────────────────
 function rPreco(){
@@ -2087,6 +2337,7 @@ function toast(msg){
   setTimeout(function(){t.style.opacity='0';setTimeout(function(){t.remove();},300);},2800);
 }
 document.addEventListener('click',function(e){if(e.target.classList&&e.target.classList.contains('overlay'))e.target.remove();});
+
 
 </script>
 </body>
