@@ -300,6 +300,10 @@ tr:hover td{background:rgba(255,255,255,.02)}
 <script>
 
 
+
+
+
+
 // ── CRUZAMENTO PRODUTO × XML ─────────────────────────────
 
 function similaridade(a, b) {
@@ -692,10 +696,14 @@ function exportNotaXLS(btn){
 function filtrarNotasPorForn(cnpj){
   var sel=document.getElementById('prod_nota_sel');
   if(!sel)return;
-  var notas=notasFiscais.filter(function(n){return n.fornecedor&&n.fornecedor.cnpj===cnpj;});
+  var notas=notasFiscais
+    .filter(function(n){return !cnpj||( n.fornecedor&&n.fornecedor.cnpj===cnpj);})
+    .sort(function(a,b){return(b.dataEmissao||'').localeCompare(a.dataEmissao||'');})
+    .slice(0,10);
   sel.innerHTML='<option value="">Selecione a nota...</option>'
     +notas.map(function(n){
-      return'<option value="'+notasFiscais.indexOf(n)+'">NF-'+esc(n.numero)+' ('+n.dataEmissao+')</option>';
+      var realIdx=notasFiscais.indexOf(n);
+      return'<option value="'+realIdx+'">NF-'+esc(n.numero)+' ('+n.dataEmissao+') — '+fR(n.totais&&n.totais.vNF||0)+'</option>';
     }).join('');
 }
 
@@ -1841,9 +1849,12 @@ function bForm(){
     +'<button class="btn" onclick="openAntec()" style="flex-shrink:0;margin-bottom:1px">Calcular antecipação</button></div>'
     +'<div class="f"><label>Alíquota FCP (%)</label><input type="number" id="ffcp" placeholder="0" step="0.01" value="0"></div></div></div>'
     +'<div class="card"><div class="ct">Nota Fiscal de origem</div>'
+    +'<div style="font-size:10px;color:var(--t2);margin-bottom:8px">Selecione o fornecedor para filtrar as últimas 10 notas importadas.</div>'
     +'<div class="g2" style="margin-bottom:8px">'
-    +'<div class="f"><label>Fornecedor</label><select id="prod_forn_sel" onchange="filtrarNotasPorForn(this.value)"><option value="">Selecione...</option>'+fornecedores.map(function(f){return'<option value="'+f.cnpj+'">'+esc(f.razaoSocial)+'</option>';}).join('')+'</select></div>'
-    +'<div class="f"><label>Número da nota</label><select id="prod_nota_sel" onchange="preencherCustoDaNota(this.value)"><option value="">Selecione...</option></select></div>'
+    +'<div class="f"><label>Fornecedor</label><select id="prod_forn_sel" onchange="filtrarNotasPorForn(this.value)"><option value="">Todos os fornecedores</option>'+fornecedores.map(function(f){return'<option value="'+f.cnpj+'">'+esc(f.razaoSocial)+'</option>';}).join('')+'</select></div>'
+    +'<div class="f"><label>Nota (últimas 10)</label><select id="prod_nota_sel" onchange="preencherCustoDaNota(this.value)"><option value="">Selecione a nota...</option>'
+    +notasFiscais.slice().sort(function(a,b){return(b.dataEmissao||'').localeCompare(a.dataEmissao||'');}).slice(0,10).map(function(n){var ri=notasFiscais.indexOf(n);return'<option value="'+ri+'">NF-'+esc(n.numero)+' — '+esc(n.fornecedor&&n.fornecedor.razaoSocial||'')+'</option>';}).join('')
+    +'</select></div>'
     +'</div></div>'
     +'<div class="card"><div class="ct">Fornecedores do produto</div>'
     +'<div id="prod_forn_list"></div>'
@@ -1860,21 +1871,99 @@ function bForm(){
 }
 
 var prodFornList=[];
+
+function vincularImpProd(impIdx, prodIdx){
+  var p=impProds[impIdx];
+  if(!p||!prods[prodIdx])return;
+  // Atualizar fornecedor no produto existente
+  if(p.fornecedoresProd&&p.fornecedoresProd.length>0){
+    atualizarFornecedorProd(prodIdx,
+      {cnpj:p.fornecedoresProd[0].fornecedorCNPJ, razaoSocial:p.fornecedoresProd[0].razaoSocial},
+      {chaveNFe:p.notaFiscalChave, numero:p.notaFiscalNum,
+       dataEmissao:p.fornecedoresProd[0].dataUltCompra, vUnCom:p.custo}
+    );
+    sv();
+  }
+  // Vincular na nota fiscal
+  if(p.notaFiscalChave){
+    var nota=notasFiscais.find(function(n){return n.chaveNFe===p.notaFiscalChave;});
+    if(nota){
+      var item=nota.itens.find(function(it){return it.cProd===p.cProd||it.xProd===p.desc;});
+      if(item)item.produtoId='idx:'+prodIdx;
+      svNotasFiscais();
+    }
+  }
+  impProds.splice(impIdx,1);
+  ren();
+  toast('Vinculado ao produto existente!');
+}
+
 function addProdForn(){
-  prodFornList.push({fornecedorId:'',precoUltCompra:'',dataUltCompra:'',principal:prodFornList.length===0});
+  // Now handled by addProdFornManual inside renderProdForn
   renderProdForn();
 }
 function renderProdForn(){
   var el=document.getElementById('prod_forn_list');if(!el)return;
-  var fornOpts=fornecedores.map(function(f){return'<option value="'+f.id+'">'+esc(f.razaoSocial)+'</option>';}).join('');
-  el.innerHTML=prodFornList.map(function(pf,i){
-    return'<div style="display:grid;grid-template-columns:1fr 100px 100px 80px 26px;gap:5px;align-items:center;margin-bottom:5px">'
-      +'<select oninput="prodFornList['+i+'].fornecedorId=this.value"><option value="">Selecione...</option>'+fornOpts+'</select>'
-      +'<input type="number" placeholder="Último preço" value="'+(pf.precoUltCompra||'')+'" oninput="prodFornList['+i+'].precoUltCompra=this.value" style="background:var(--bg3);border:1px solid var(--bdr2);border-radius:5px;padding:5px 8px;color:var(--text);font-family:var(--mono);font-size:10px;width:100%">'
-      +'<input type="date" value="'+(pf.dataUltCompra||'')+'" oninput="prodFornList['+i+'].dataUltCompra=this.value" style="background:var(--bg3);border:1px solid var(--bdr2);border-radius:5px;padding:5px 8px;color:var(--text);font-family:var(--mono);font-size:10px;width:100%">'
-      +'<label style="font-size:9px;display:flex;align-items:center;gap:3px"><input type="checkbox" '+(pf.principal?'checked':'')+' onchange="prodFornList['+i+'].principal=this.checked"> Principal</label>'
-      +'<div class="cdel" onclick="prodFornList.splice('+i+',1);renderProdForn()">&times;</div></div>';
+  var fornOpts=fornecedores.map(function(f){
+    return'<option value="'+f.cnpj+'">'+esc(f.razaoSocial)+'</option>';
   }).join('');
+  // Show existing fornecedores as table
+  var existingHtml='';
+  if(prodFornList.length>0){
+    existingHtml='<div style="overflow-x:auto;margin-bottom:8px"><table>'
+      +'<tr><th>Fornecedor</th><th>Último preço</th><th>Data</th><th>NF</th><th>Principal</th><th></th></tr>'
+      +prodFornList.map(function(pf,i){
+        var fornName=pf.razaoSocial||fornecedores.find(function(f){return f.cnpj===pf.fornecedorCNPJ;})&&
+          fornecedores.find(function(f){return f.cnpj===pf.fornecedorCNPJ;}).razaoSocial||pf.fornecedorCNPJ||'—';
+        return'<tr>'
+          +'<td style="font-size:10px;font-weight:600;max-width:140px;overflow:hidden;text-overflow:ellipsis">'+esc(fornName)+'</td>'
+          +'<td style="font-family:var(--mono)">'+fR(pf.precoUltCompra||0)+'</td>'
+          +'<td style="font-family:var(--mono);font-size:9px">'+(pf.dataUltCompra||'—')+'</td>'
+          +'<td>'+(pf.notaFiscalNum?'<span class="tag">NF-'+esc(pf.notaFiscalNum)+'</span>':'—')+'</td>'
+          +'<td style="text-align:center">'+(pf.principal?'<span class="badge bgg">✓</span>':'<button class="btn xs" onclick="setPrincipal('+i+')">Definir</button>')+'</td>'
+          +'<td><div class="cdel" onclick="prodFornList.splice('+i+',1);renderProdForn()">&times;</div></td>'
+          +'</tr>';
+      }).join('')+'</table></div>';
+  }
+  // Add new supplier form
+  el.innerHTML=existingHtml
+    +'<div style="background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:10px;margin-bottom:6px" id="add-forn-form">'
+    +'<div style="font-size:9px;font-weight:700;color:var(--t2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">+ Adicionar fornecedor</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 100px 100px 80px auto;gap:6px;align-items:end">'
+    +'<div><label style="font-size:9px;color:var(--t2);display:block;margin-bottom:3px">Fornecedor</label>'
+    +'<select id="new-forn-sel" style="background:var(--bg);border:1px solid var(--bdr2);border-radius:5px;padding:5px 8px;color:var(--text);font-family:var(--sans);font-size:10px;width:100%">'
+    +'<option value="">Selecione...</option>'+fornOpts+'</select></div>'
+    +'<div><label style="font-size:9px;color:var(--t2);display:block;margin-bottom:3px">Último preço</label>'
+    +'<input type="number" id="new-forn-preco" placeholder="0,00" style="background:var(--bg);border:1px solid var(--bdr2);border-radius:5px;padding:5px 8px;color:var(--text);font-family:var(--mono);font-size:10px;width:100%"></div>'
+    +'<div><label style="font-size:9px;color:var(--t2);display:block;margin-bottom:3px">Data</label>'
+    +'<input type="date" id="new-forn-data" style="background:var(--bg);border:1px solid var(--bdr2);border-radius:5px;padding:5px 8px;color:var(--text);font-family:var(--mono);font-size:10px;width:100%"></div>'
+    +'<div style="display:flex;align-items:center;gap:4px;padding-bottom:2px"><input type="checkbox" id="new-forn-principal"><label style="font-size:9px;color:var(--t2)">Principal</label></div>'
+    +'<button class="btn xs p" style="margin-bottom:1px" onclick="addProdFornManual()">Adicionar</button>'
+    +'</div></div>';
+}
+
+function setPrincipal(i){
+  prodFornList.forEach(function(f,idx){f.principal=(idx===i);});
+  renderProdForn();
+}
+
+function addProdFornManual(){
+  var sel=document.getElementById('new-forn-sel');
+  var cnpj=sel?sel.value:'';
+  if(!cnpj){toast('Selecione o fornecedor.');return;}
+  var forn=fornecedores.find(function(f){return f.cnpj===cnpj;});
+  var preco=parseFloat(document.getElementById('new-forn-preco').value)||0;
+  var data=document.getElementById('new-forn-data').value||new Date().toISOString().slice(0,10);
+  var isPrincipal=document.getElementById('new-forn-principal').checked||prodFornList.length===0;
+  if(isPrincipal)prodFornList.forEach(function(f){f.principal=false;});
+  prodFornList.push({
+    fornecedorCNPJ:cnpj,
+    razaoSocial:forn?forn.razaoSocial:cnpj,
+    precoUltCompra:preco,
+    dataUltCompra:data,
+    principal:isPrincipal
+  });
+  renderProdForn();
 }
 
 function stabP(idx){
@@ -1928,7 +2017,7 @@ function fillForm(p){
   var af=document.getElementById('antecf');if(af)af.style.display=p.temAntec?'block':'none';
   var faa=document.getElementById('fal_antec');if(faa){faa.readOnly=false;faa.value=p.alqAntec||'';faa.readOnly=true;}
   var ffc=document.getElementById('ffcp');if(ffc)ffc.value=p.alqFCP||0;
-  prodFornList=(p.fornecedoresProd||[]).slice();
+  prodFornList=(p.fornecedoresProd||[]).map(function(f){return Object.assign({},f);});
   concList=(p.concorrentes||[]).map(function(c){return Object.assign({},c);});
   rConcList();renderProdForn();atuST();
 }
@@ -1953,7 +2042,7 @@ function saveFP(){
     temAntec:(document.getElementById('fantec')&&document.getElementById('fantec').checked)||false,
     alqAntec:parseFloat((document.getElementById('fal_antec')&&document.getElementById('fal_antec').value)||0)||0,
     alqFCP:parseFloat((document.getElementById('ffcp')&&document.getElementById('ffcp').value)||0)||0,
-    fornecedoresProd:prodFornList.slice(),
+    fornecedoresProd:prodFornList.map(function(f){return Object.assign({},f);}),
     concorrentes:concList.map(function(c){return{nome:c.nome,preco:parseFloat(c.preco)||0,data:c.data};}),
     precoVenda:editIdx>=0?prods[editIdx].precoVenda:null,
     margemReal:editIdx>=0?prods[editIdx].margemReal:null,
@@ -1988,18 +2077,45 @@ function gv2(el,tag){var n=el.getElementsByTagName(tag)[0];return n?n.textConten
 function rImp(){
   return'<div class="card"><div class="ct">'+impProds.length+' produto(s) importado(s)</div>'
     +impProds.map(function(p,i){
+      var isDup=!!p._provavelDuplicata;
+      var dupProd=isDup?prods[p._produtoIdxSugerido]:null;
       return'<div style="background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:10px;margin-bottom:6px">'
         +'<div style="font-size:11px;font-weight:700;margin-bottom:7px">'+esc(p.desc)+' '+tipoBadge(p.tipoProd||'tributado')+'</div>'
         +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:7px">'
-        +[['NCM',p.ncm||'—'],['Custo',fR(p.custo)],['IPI',p.ipi?p.ipi.toFixed(2)+'%':'0%'],['ST ef.',p.temST?p.stEf.toFixed(2)+'%':'N/A']]
+        +[['NCM',p.ncm||'—'],['EAN',p.cEAN||'—'],['Custo',fR(p.custo)],['ST ef.',p.temST?p.stEf.toFixed(2)+'%':'N/A']]
           .map(function(x){return'<div style="font-size:9px;color:var(--t2);font-weight:700">'+x[0]+'<span style="display:block;font-family:var(--mono);font-size:10px;color:var(--text);margin-top:1px">'+esc(String(x[1]))+'</span></div>';}).join('')
-        +'</div><button class="btn xs p" onclick="saveImp('+i+')">Salvar produto</button></div>';
+        +'</div>'
+        +(p.fornecedoresProd&&p.fornecedoresProd.length>0
+          ?'<div style="font-size:9px;color:var(--t2);margin-bottom:7px">Fornecedor: <span style="color:var(--gold2);font-weight:700">'+esc(p.fornecedoresProd[0].razaoSocial||p.fornecedoresProd[0].fornecedorCNPJ||'—')+'</span>'
+            +(p.notaFiscalNum?' &middot; NF-'+esc(p.notaFiscalNum):'')+'</div>'
+          :'')
+        +(isDup&&dupProd
+          ?'<div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:6px;padding:6px 10px;font-size:10px;color:var(--warn);margin-bottom:7px">&#9888; Poss&#237;vel duplicata de: <b>'+esc(dupProd.desc)+'</b> ('+esc(p._motivo||'')+')</div>'
+            +'<div style="display:flex;gap:6px"><button class="btn xs p" onclick="saveImp('+i+')">Salvar como novo</button>'
+            +'<button class="btn xs" onclick="vincularImpProd('+i+','+p._produtoIdxSugerido+')">Vincular ao existente</button></div>'
+          :'<button class="btn xs p" onclick="saveImp('+i+')">Salvar produto</button>')
+        +'</div>';
     }).join('')+'</div>';
 }
 function saveImp(i){
   var p=Object.assign({},impProds[i]);
   if(!p.concorrentes)p.concorrentes=[];
-  prods.push(p);sv();impProds.splice(i,1);ren();toast('Produto salvo!');
+  if(!p.id)p.id=gerarId();
+  var novoIdx=prods.length;
+  prods.push(p);
+  sv();
+  // Vincular de volta na nota fiscal
+  if(p.notaFiscalChave){
+    var nota=notasFiscais.find(function(n){return n.chaveNFe===p.notaFiscalChave;});
+    if(nota){
+      var item=nota.itens.find(function(it){return it.cProd===p.cProd||it.xProd===p.desc;});
+      if(item){item.produtoId='idx:'+novoIdx;}
+      svNotasFiscais();
+    }
+  }
+  impProds.splice(i,1);
+  ren();
+  toast('Produto salvo'+(p.notaFiscalNum?' e vinculado à NF-'+p.notaFiscalNum:'')+'!');
 }
 
 // ── NOTAS FISCAIS ─────────────────────────────────────────
@@ -2337,6 +2453,10 @@ function toast(msg){
   setTimeout(function(){t.style.opacity='0';setTimeout(function(){t.remove();},300);},2800);
 }
 document.addEventListener('click',function(e){if(e.target.classList&&e.target.classList.contains('overlay'))e.target.remove();});
+
+
+
+
 
 
 </script>
