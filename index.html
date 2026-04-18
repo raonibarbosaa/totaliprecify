@@ -321,7 +321,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 // ── FIREBASE AUTH INIT ───────────────────────────────────
 var auth = firebase.auth();
 var db = firebase.firestore();
-db.enablePersistence({synchronizeTabs:true}).catch(function(){});
+// Persistence gerenciada automaticamente pelo SDK v10+
 var currentUser = null;
 var _lsStart = Date.now();
 
@@ -336,14 +336,22 @@ function hideLs(){
 firebase.auth().onAuthStateChanged(function(user){
   if(user){
     currentUser=user;
-    // Salvar e-mail no users para busca de membros
-    db.collection('users').doc(user.uid).set({email:user.email},{merge:true});
+    console.log('[DEBUG] Usuario autenticado:', user.email);
+    db.collection('users').doc(user.uid).set({email:user.email},{merge:true})
+      .then(function(){console.log('[DEBUG] Email salvo no Firestore');})
+      .catch(function(e){console.error('[DEBUG] Erro ao salvar email:',e);});
     loadUserEmpresas().then(function(){
+      console.log('[DEBUG] Empresas carregadas:',empresas.length,'curEmpresaId:',curEmpresaId);
       hideLs();
       document.getElementById('auth-screen').style.display='none';
       document.getElementById('app').style.display='flex';
-      ren();
+      try{ren();}catch(e){console.error('[DEBUG] Erro no ren():',e);}
       checkBloqueado();
+    }).catch(function(e){
+      console.error('[DEBUG] Erro no loadUserEmpresas:',e);
+      hideLs();
+      document.getElementById('auth-screen').style.display='none';
+      document.getElementById('app').style.display='flex';
     });
   } else {
     currentUser=null;
@@ -503,21 +511,34 @@ async function loadUserEmpresas(){
     var empresaAtiva=userData.empresaAtiva||null;
     var empresasIds=userData.empresasIds||[];
 
-    // Buscar empresas por query de membro
-    var snap=await db.collection('empresas')
-      .where('membros.'+currentUser.uid,'!=',null)
-      .get();
     empresas=[];
-    snap.forEach(function(doc){empresas.push(Object.assign({id:doc.id},doc.data()));});
+
+    // Se tem lista de IDs, buscar por ID (mais confiável)
+    if(empresasIds.length>0){
+      for(var i=0;i<empresasIds.length;i++){
+        try{
+          var doc=await db.collection('empresas').doc(empresasIds[i]).get();
+          if(doc.exists)empresas.push(Object.assign({id:doc.id},doc.data()));
+        }catch(e2){console.warn('Empresa não acessível:',empresasIds[i]);}
+      }
+    }
+
+    // Fallback: tentar query por membro
+    if(empresas.length===0){
+      try{
+        var snap=await db.collection('empresas')
+          .where('membros.'+currentUser.uid,'!=',null)
+          .get();
+        snap.forEach(function(doc){empresas.push(Object.assign({id:doc.id},doc.data()));});
+      }catch(e3){console.warn('Query membros falhou:',e3.message);}
+    }
 
     if(empresas.length===0){
-      // Sem empresa cadastrada
       curEmpresa=null;curEmpresaId=null;
       prods=[];fbase={};params={};fornecedores=[];pedidos=[];
       return;
     }
 
-    // Carregar empresa ativa
     var empAtiva=empresas.find(function(e){return e.id===empresaAtiva;});
     if(empAtiva){
       await loadEmpresaData(empresaAtiva);
@@ -527,7 +548,6 @@ async function loadUserEmpresas(){
     }
   }catch(e){
     console.error('loadUserEmpresas:',e);
-    // Se for erro de permissão, limpar estado
     curEmpresa=null;curEmpresaId=null;
     prods=[];fbase={};params={};fornecedores=[];pedidos=[];
   }
@@ -563,6 +583,7 @@ function updateEmpresaSelector(){
 function ren(){
   var el=document.getElementById('main');
   if(!el)return;
+  console.log('[DEBUG] ren() curPage:',curPage,'curEmpresaId:',curEmpresaId,'empresas:',empresas.length);
   var btnAdmin=document.getElementById('btn-admin');
   if(btnAdmin)btnAdmin.style.display=isAdmin()?'inline-flex':'none';
 
@@ -787,7 +808,8 @@ async function saveEmpresa(){
       await db.collection('users').doc(currentUser.uid).set({
         empresaAtiva:ref.id,
         email:currentUser.email,
-        updatedAt:new Date().toISOString()
+        updatedAt:new Date().toISOString(),
+        empresasIds:firebase.firestore.FieldValue.arrayUnion(ref.id)
       },{merge:true});
       await loadEmpresaData(ref.id);
       updateEmpresaSelector();
@@ -846,6 +868,10 @@ async function addMembro(){
     var update={};
     update['membros.'+uid]='admin';
     await db.collection('empresas').doc(curEmpresaId).update(update);
+    // Adicionar empresaId ao array do usuário
+    await db.collection('users').doc(uid).set({
+      empresasIds:firebase.firestore.FieldValue.arrayUnion(curEmpresaId)
+    },{merge:true});
     if(!curEmpresa.membros)curEmpresa.membros={};
     curEmpresa.membros[uid]='admin';
     document.getElementById('m_email').value='';
