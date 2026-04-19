@@ -314,6 +314,18 @@ function fecharPreviewPDF(){
 function fRpdf(v){ return 'R$ '+parseFloat(v||0).toFixed(2).replace('.',','); }
 function fPct2(v){ return parseFloat(v||0).toFixed(1)+'%'; }
 
+// ═══ IMPRESSÃO DE RELATÓRIO (atalhos para lista completa) ═══════════════
+// Reaproveita o fluxo existente (abrirModalPDF → abrirPreviewPDF → imprimirPDF)
+// com o mesmo modal/preview dourado usado pelo GeRescisão.
+function imprimirListaProdutos(){
+  if(!prods.length){ toast('Nenhum produto cadastrado.'); return; }
+  abrirModalPDF(prods.slice());
+}
+function imprimirListaFormacao(){
+  if(!prods.length){ toast('Nenhum produto cadastrado.'); return; }
+  abrirModalPDF(prods.slice());
+}
+
 
 
 
@@ -2155,9 +2167,10 @@ return'<div class="ptab"><button class="ptb on" id="ptb0" onclick="stabP(0)">Pro
 +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
 +'<label style="font-size:10px;color:var(--t2);display:flex;align-items:center;gap:5px;cursor:pointer">'
 +'<input type="checkbox" id="chk-all" onchange="toggleTodosSel()"> Selecionar todos</label>'
-+'<div style="display:flex;gap:6px;align-items:center">'
-+'<span style="font-size:9px;color:var(--t2)">Selecione produtos para gerar PDF</span>'
++'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
++'<span style="font-size:9px;color:var(--t2)">Selecione produtos ou imprima a lista completa</span>'
 +'<button class="btn p xs" id="btn-pdf-sel" style="display:none" onclick="gerarPDFSelecionados()">&#128196; Gerar PDF dos selecionados</button>'
++'<button class="btn g xs" onclick="imprimirListaProdutos()" title="Abrir preview e imprimir lista completa">&#128424; Imprimir relatório</button>'
 +'</div>'
 +'</div>'
 +'<div style="overflow-x:auto"><table>'
@@ -2407,8 +2420,12 @@ function saveImp(i){
 
 // ── FORMAÇÃO DE PREÇO ─────────────────────────────────────
 function rPreco(){
+  var btnImprimir = prods.length>0
+    ? '<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn g xs" onclick="imprimirListaFormacao()" title="Abrir preview e imprimir relatório completo">&#128424; Imprimir relatório</button></div>'
+    : '';
   return(!paramOk()?alertaParams():'')
     +'<div class="card"><div class="ct">Selecionar produto</div>'
+    +btnImprimir
     +(prods.length===0?'<div class="empty">Cadastre produtos primeiro.</div>'
     :'<div style="overflow-x:auto"><table><tr><th>Produto</th><th>Tipo</th><th>Custo total</th><th>ST</th><th>Preço venda</th><th>Status</th><th></th></tr>'
     +prods.map(function(p,i){var c=calcCT(p);
