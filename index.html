@@ -1548,59 +1548,98 @@ async function loadEmpresaData(empId){
 }
 
 async function loadUserEmpresas(){
+  // Diagnostico detalhado de cada etapa — aparece no painel da tela de erro
+  window._diagInfo = {
+    queryMain: '?', queryMainErr: '',
+    userDocExists: '?', empresaAtiva: '?',
+    fb1Run: false, fb1Found: false, fb1Err: '',
+    fb2Run: false, fb2Count: 0, fb2Err: ''
+  };
   try{
-    // No Safari iOS, forca servidor (nao usa cache local que pode estar corrompido)
     var getOpts = _isSafariIOS ? {source:'server'} : undefined;
-    // Race com timeout de 20s — Safari iOS pode travar queries silenciosamente
-    var queryPromise = db.collection('empresas')
-      .where('membros.'+currentUser.uid,'!=',null)
-      .get(getOpts);
-    var timeoutPromise = new Promise(function(_, rej){
-      setTimeout(function(){ rej(new Error('TIMEOUT_FIRESTORE')); }, 20000);
-    });
-    var snap;
+
+    // ── QUERY PRINCIPAL (where membros.uid != null) ──
     try {
-      snap = await Promise.race([queryPromise, timeoutPromise]);
+      var queryPromise = db.collection('empresas')
+        .where('membros.'+currentUser.uid,'!=',null)
+        .get(getOpts);
+      var timeoutPromise = new Promise(function(_, rej){
+        setTimeout(function(){ rej(new Error('TIMEOUT_FIRESTORE')); }, 20000);
+      });
+      var snap = await Promise.race([queryPromise, timeoutPromise]);
       empresas=[];
       snap.forEach(function(doc){empresas.push(Object.assign({id:doc.id},doc.data()));});
+      window._diagInfo.queryMain = empresas.length;
     } catch(queryErr) {
-      // Query principal falhou — nao joga erro ainda, tenta o fallback
       console.warn('[loadUserEmpresas] Query principal falhou:', queryErr.message);
+      window._diagInfo.queryMainErr = queryErr.message||String(queryErr);
       empresas = [];
     }
-    console.log('[loadUserEmpresas] Query retornou:', empresas.length, 'empresas para uid', currentUser.uid);
+    console.log('[loadUserEmpresas] Query principal retornou:', empresas.length, 'para uid', currentUser.uid);
 
-    // Carrega user doc (empresaAtiva)
-    var userDoc = await db.collection('users').doc(currentUser.uid).get(getOpts);
-    var empresaAtiva = userDoc.exists ? userDoc.data().empresaAtiva : null;
+    // ── LE USER DOC ──
+    var userDoc, empresaAtiva = null;
+    try {
+      userDoc = await db.collection('users').doc(currentUser.uid).get(getOpts);
+      window._diagInfo.userDocExists = userDoc.exists ? 'SIM' : 'NAO';
+      if(userDoc.exists){
+        empresaAtiva = userDoc.data().empresaAtiva || null;
+        window._diagInfo.empresaAtiva = empresaAtiva || '(sem campo)';
+      } else {
+        window._diagInfo.empresaAtiva = '(user doc nao existe)';
+      }
+    } catch(udErr) {
+      window._diagInfo.userDocExists = 'ERRO';
+      window._diagInfo.empresaAtiva = udErr.message;
+    }
 
-    // FALLBACK CRITICO (principalmente Safari iOS): se a query com operador !=
-    // retornou vazia mas o usuario tem empresaAtiva salva no user doc,
-    // busca a empresa diretamente por ID. Isso contorna bugs de indice/cache
-    // do Firestore em nested fields no Safari.
+    // ── FALLBACK 1: buscar empresa ativa por ID direto ──
     if (empresas.length === 0 && empresaAtiva) {
-      console.log('[loadUserEmpresas] FALLBACK — tentando buscar empresa ativa por ID:', empresaAtiva);
+      window._diagInfo.fb1Run = true;
+      console.log('[loadUserEmpresas] FB1 — buscando empresa ativa:', empresaAtiva);
       try {
         var empDoc = await db.collection('empresas').doc(empresaAtiva).get(getOpts);
         if (empDoc.exists) {
           empresas = [Object.assign({id: empDoc.id}, empDoc.data())];
-          console.log('[loadUserEmpresas] FALLBACK funcionou — empresa carregada:', empDoc.id);
+          window._diagInfo.fb1Found = true;
+          console.log('[loadUserEmpresas] FB1 OK');
         } else {
-          console.warn('[loadUserEmpresas] FALLBACK — empresa ativa nao existe mais:', empresaAtiva);
+          console.warn('[loadUserEmpresas] FB1 — empresa ativa nao existe mais');
         }
-      } catch(fallbackErr) {
-        console.error('[loadUserEmpresas] FALLBACK falhou:', fallbackErr);
-        window._loadErr = 'Fallback: '+(fallbackErr.message||fallbackErr);
+      } catch(fb1Err) {
+        window._diagInfo.fb1Err = fb1Err.message||String(fb1Err);
+        console.error('[loadUserEmpresas] FB1 falhou:', fb1Err);
       }
     }
 
+    // ── FALLBACK 2: query simples por criadoPor == uid ──
+    // (queries com == em campo de topo sao MUITO mais estaveis no Safari iOS
+    //  que where != em nested fields)
+    if (empresas.length === 0) {
+      window._diagInfo.fb2Run = true;
+      console.log('[loadUserEmpresas] FB2 — tentando por criadoPor');
+      try {
+        var altSnap = await db.collection('empresas')
+          .where('criadoPor','==',currentUser.uid)
+          .get(getOpts);
+        altSnap.forEach(function(doc){
+          empresas.push(Object.assign({id:doc.id},doc.data()));
+        });
+        window._diagInfo.fb2Count = empresas.length;
+        console.log('[loadUserEmpresas] FB2 encontrou:', empresas.length);
+      } catch(fb2Err) {
+        window._diagInfo.fb2Err = fb2Err.message||String(fb2Err);
+        console.error('[loadUserEmpresas] FB2 falhou:', fb2Err);
+      }
+    }
+
+    // ── CARREGA EMPRESA ATIVA ──
     if(empresaAtiva&&empresas.find(function(e){return e.id===empresaAtiva;})){
       await loadEmpresaData(empresaAtiva);
     } else if(empresas.length>0){
       await loadEmpresaData(empresas[0].id);
-      await db.collection('users').doc(currentUser.uid).update({empresaAtiva:empresas[0].id});
+      try { await db.collection('users').doc(currentUser.uid).update({empresaAtiva:empresas[0].id}); } catch(e){}
     } else {
-      // Sem empresa — mostrar tela de criar empresa
       curEmpresa=null; curEmpresaId=null;
       prods=[]; fbase={}; params={}; fornecedores=[]; pedidos=[];
     }
@@ -1672,7 +1711,22 @@ function rSemEmpresa(){
   var ua = navigator.userAgent.replace(/^.*\((.*?)\).*$/, '$1').slice(0,50);
   var isSafariStr = _isSafariIOS ? 'SIM (forcado long-polling)' : 'nao';
   var online = navigator.onLine ? 'ONLINE' : 'OFFLINE';
-  var diag = '<details style="text-align:left;background:var(--bg3);border:1px solid var(--bdr2);border-radius:6px;padding:10px 14px;margin:12px auto;max-width:440px;font-size:10px;font-family:var(--mono);color:var(--t2)">'
+  var d = window._diagInfo || {};
+  var diagSteps = '<div style="border-top:1px solid var(--bdr2);margin-top:8px;padding-top:8px">'
+    +'<b style="color:var(--gold2)">Etapas do carregamento:</b><br>'
+    +'<b>1. Query principal (where membros.uid != null):</b> '+(d.queryMain!==undefined?d.queryMain:'?')+' empresas'
+    +(d.queryMainErr?' <span style="color:var(--danger)">[ERRO: '+esc(d.queryMainErr)+']</span>':'')+'<br>'
+    +'<b>2. User doc existe:</b> '+(d.userDocExists||'?')+'<br>'
+    +'<b>3. Campo empresaAtiva:</b> '+esc(d.empresaAtiva||'?')+'<br>'
+    +'<b>4. Fallback 1 (busca empresa ativa direto):</b> '
+    +(d.fb1Run?(d.fb1Found?'<span style="color:var(--green)">ENCONTROU</span>':'nao achou')
+      :'nao rodou')
+    +(d.fb1Err?' <span style="color:var(--danger)">[ERRO: '+esc(d.fb1Err)+']</span>':'')+'<br>'
+    +'<b>5. Fallback 2 (where criadoPor == uid):</b> '
+    +(d.fb2Run?d.fb2Count+' empresas':'nao rodou')
+    +(d.fb2Err?' <span style="color:var(--danger)">[ERRO: '+esc(d.fb2Err)+']</span>':'')
+    +'</div>';
+  var diag = '<details style="text-align:left;background:var(--bg3);border:1px solid var(--bdr2);border-radius:6px;padding:10px 14px;margin:12px auto;max-width:500px;font-size:10px;font-family:var(--mono);color:var(--t2)">'
     +'<summary style="cursor:pointer;font-weight:700;color:var(--gold2);margin-bottom:6px">Diagnostico (toque para ver)</summary>'
     +'<div style="line-height:1.7;word-break:break-all">'
     +'<b>Conexao:</b> '+online+'<br>'
@@ -1682,6 +1736,7 @@ function rSemEmpresa(){
     +'<b>Safari iOS:</b> '+isSafariStr+'<br>'
     +'<b>Navegador:</b> '+esc(ua)+'<br>'
     +(window._loadErr?'<b style="color:var(--danger)">Erro:</b> '+esc(window._loadErr):'<b>Erro:</b> (nenhum)')
+    +diagSteps
     +'</div></details>';
 
   // Se houve erro explicito OU se o usuario tem auth mas 0 empresas carregaram
@@ -1696,8 +1751,8 @@ function rSemEmpresa(){
       ? 'A conexao com o servidor demorou mais que o esperado.<br>Isso pode acontecer em redes instaveis ou no Safari do iPhone em modo privado.'
       : (window._loadErr
         ? 'Ocorreu um erro ao buscar suas empresas no servidor.<br>Verifique sua conexao e tente novamente.'
-        : 'Nenhuma empresa foi retornada. Se voce tem empresas cadastradas (vistas em outro dispositivo), tente limpar o cache e recarregar.');
-    return '<div style="text-align:center;padding:40px 20px;max-width:480px;margin:0 auto">'
+        : 'Nenhuma empresa foi retornada. Veja o diagnostico abaixo para detalhes.');
+    return '<div style="text-align:center;padding:40px 20px;max-width:560px;margin:0 auto">'
       +'<div style="font-size:40px;margin-bottom:16px">⚠️</div>'
       +'<div style="font-size:16px;font-weight:700;margin-bottom:8px">'+titulo+'</div>'
       +'<div style="font-size:11px;color:var(--t2);margin-bottom:10px;line-height:1.5">'+msg+'</div>'
