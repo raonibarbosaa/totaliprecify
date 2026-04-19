@@ -94,6 +94,7 @@ firebase.initializeApp({
 <scri
 <script>
 
+
 // PDF MODULE
 var prodsSelecionados = [];
 var _pdfParams = {com:3, frtS:2, tax:2, mrg:20};
@@ -1329,7 +1330,7 @@ function doLogin(){
 }
 function doLogout(){
   firebase.auth().signOut().then(function(){
-    prods=[];fbase={};params={};fornecedores=[];pedidos=[];
+    prods=[];fbase={};params={};fornecedores=[];pedidos=[];notasFiscais=[];conferencias=[];
     empresas=[];curEmpresa=null;curEmpresaId=null;
   });
 }
@@ -1436,6 +1437,19 @@ function svFornecedores(){
   }).catch(function(e){console.error('svForn:',e);});
 }
 
+
+function migrarEmpresa(d, empId){
+  var updates={};var precisaMigrar=false;
+  if(!d.notasFiscais){updates.notasFiscais=[];precisaMigrar=true;}
+  if(!d.conferencias){updates.conferencias=[];precisaMigrar=true;}
+  if(!d.fornecedores){updates.fornecedores=[];fornecedores=[];precisaMigrar=true;}
+  if(!d.pedidos){updates.pedidos=[];precisaMigrar=true;}
+  if(precisaMigrar){
+    db.collection('empresas').doc(empId).set(updates,{merge:true})
+      .catch(function(e){console.error('migrar:',e);});
+  }
+}
+
 async function loadEmpresaData(empId){
   try{
     var snap=await db.collection('empresas').doc(empId).get();
@@ -1448,6 +1462,9 @@ async function loadEmpresaData(empId){
       params=d.params||{};
       fornecedores=d.fornecedores||[];
       pedidos=d.pedidos||[];
+      notasFiscais=d.notasFiscais||[];
+      conferencias=d.conferencias||[];
+      migrarEmpresa(d, empId);
     }
   }catch(e){console.error('loadEmpresaData:',e);}
 }
@@ -1486,7 +1503,7 @@ async function trocarEmpresa(empId){
 // ── NAVEGAÇÃO ────────────────────────────────────────────
 function go(p){
   curPage=p;
-  var pages=['dash','xml','prod','forn','pedidos','empresas','preco'];
+  var pages=['dash','xml','prod','forn','pedidos','conf','notas','empresas','preco'];
   document.querySelectorAll('.nb').forEach(function(b,i){b.classList.toggle('on',pages[i]===p);});
   updateEmpresaSelector();
   ren();
@@ -1521,6 +1538,8 @@ function ren(){
   else if(curPage==='forn')el.innerHTML=rForn();
   else if(curPage==='pedidos')el.innerHTML=rPedidos();
   else if(curPage==='empresas')el.innerHTML=rEmpresas();
+  else if(curPage==='conf')el.innerHTML=rConf();
+  else if(curPage==='notas')el.innerHTML=rNotas();
   else if(curPage==='preco')el.innerHTML=rPreco();
   else if(curPage==='admin'){
     if(!isAdmin()){el.innerHTML='<div class="empty">Acesso negado.</div>';return;}
@@ -2671,6 +2690,7 @@ function toast(msg){
   setTimeout(function(){t.style.opacity='0';setTimeout(function(){t.remove();},300);},2800);
 }
 document.addEventListener('click',function(e){if(e.target.classList&&e.target.classList.contains('overlay'))e.target.remove();});
+
 
 </script>
 </body>
