@@ -556,7 +556,329 @@ function buildRelatorioHTML(lista){
     +resumoHTML
     +'<div style="margin-top:16px;text-align:center;font-size:9px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px">'
     +'Gerado por <b>Totali Precify</b> · totalicontabilidade.com.br · '+dataHoje+'</div>'
-    +'<script>window.onload=function(){window.print();}<'+'/script>'
+    +'<script>
+
+
+// PDF MODULE
+var prodsSelecionados = [];
+var _pdfParams = {com:3, frtS:2, tax:2, mrg:20};
+
+
+function toggleProdSel(i){
+  var idx = prodsSelecionados.indexOf(i);
+  if(idx >= 0) prodsSelecionados.splice(idx,1);
+  else prodsSelecionados.push(i);
+  updateBtnPDF();
+}
+
+function toggleTodosSel(){
+  if(prodsSelecionados.length === prods.length){
+    prodsSelecionados = [];
+  } else {
+    prodsSelecionados = prods.map(function(_,i){return i;});
+  }
+  document.querySelectorAll('.prod-chk').forEach(function(cb,i){
+    cb.checked = prodsSelecionados.indexOf(i) >= 0;
+  });
+  var all = document.getElementById('chk-all');
+  if(all) all.checked = prodsSelecionados.length === prods.length;
+  updateBtnPDF();
+}
+
+function updateBtnPDF(){
+  var btn = document.getElementById('btn-pdf-sel');
+  if(!btn) return;
+  if(prodsSelecionados.length > 0){
+    btn.style.display = 'inline-flex';
+    btn.textContent = 'Gerar PDF (' + prodsSelecionados.length + ')';
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+function gerarPDFSelecionados(){
+  if(!prodsSelecionados.length){ toast('Selecione pelo menos um produto.'); return; }
+  var lista = prodsSelecionados.map(function(i){ return prods[i]; });
+  abrirModalPDF(lista);
+}
+
+function gerarPDFProd(i){
+  if(!prods[i]){ toast('Produto não encontrado.'); return; }
+  abrirModalPDF([prods[i]]);
+}
+
+function calcDRE(p, pv, comP, frtSP, taxP){
+  var c = calcCT(p);
+  var regime = getRegime();
+  var das = getDAS(p.tipoProd||'tributado');
+  var alqInt = p.alqInt || params.alqInt || 0;
+  var temST = !!p.temST;
+  var pisA=0, cofA=0, credI=0, credP=0, credC=0;
+  var icmsNom = temST ? 0 : alqInt;
+  if(regime==='presumido'){ pisA=0.65; cofA=3.00; }
+  else if(regime==='real'){ pisA=1.65; cofA=7.60; credI=temST?0:p.custo*(p.alqOrig||0)/100; credP=p.custo*pisA/100; credC=p.custo*cofA/100; }
+  var dasTotal = pv*das/100;
+  var icmsD = temST?0:pv*icmsNom/100;
+  var pisD = pv*pisA/100;
+  var cofD = pv*cofA/100;
+  var icmsL = icmsD-credI, pisL = pisD-credP, cofL = cofD-credC;
+  var totalImp = regime==='simples'?dasTotal:(icmsL+pisL+cofL);
+  var recLiq = pv-totalImp;
+  var lucroBruto = recLiq-c.ct;
+  var despOp = pv*(comP+frtSP+taxP)/100;
+  var lucroOp = lucroBruto-despOp;
+  var mf = pv>0?((pv-c.ct)/pv*100):0;
+  var mkpR = c.ct>0?((pv/c.ct-1)*100):0;
+  return {ct:c.ct,pv:pv,das:das,dasTotal:dasTotal,icmsD:icmsD,icmsL:icmsL,
+    pisD:pisD,pisL:pisL,cofD:cofD,cofL:cofL,totalImp:totalImp,recLiq:recLiq,
+    lucroBruto:lucroBruto,despOp:despOp,lucroOp:lucroOp,mf:mf,mkpR:mkpR,
+    regime:regime,pisA:pisA,cofA:cofA,c:c};
+}
+
+function calcPVAuto(p, comP, frtSP, taxP, mrgP){
+  var c = calcCT(p);
+  var regime = getRegime();
+  var das = getDAS(p.tipoProd||'tributado');
+  var alqInt = p.alqInt || params.alqInt || 0;
+  var temST = !!p.temST;
+  var pisA=0, cofA=0, credI=0, credP=0, credC=0;
+  if(regime==='presumido'){ pisA=0.65; cofA=3.00; }
+  else if(regime==='real'){ pisA=1.65; cofA=7.60; credI=temST?0:p.custo*(p.alqOrig||0)/100; credP=p.custo*pisA/100; credC=p.custo*cofA/100; }
+  var icmsNom = temST?0:alqInt;
+  var estrutura = regime==='simples'
+    ? (das+comP+frtSP+taxP+mrgP)/100
+    : (icmsNom+pisA+cofA+comP+frtSP+taxP+mrgP)/100;
+  var baseAdj = regime==='real' ? c.ct-credI-credP-credC : c.ct;
+  var parcela = 1-estrutura;
+  return parcela>0 ? baseAdj/parcela : c.ct*2;
+}
+
+function abrirModalPDF(lista){
+  if(!paramOk()){ toast('Configure os parametros fiscais antes de gerar o PDF.'); return; }
+  var ov=document.createElement('div');
+  ov.className='overlay';
+  ov.id='pdfov';
+  var div=document.createElement('div');
+  div.className='modal';
+  div.innerHTML='<div class="mt2">Gerar relatorio PDF</div>'
+    +'<div class="ms2">'+lista.length+' produto(s) selecionado(s)</div>'
+    +'<div class="g2" style="margin-bottom:12px">'
+    +'<div class="f"><label>Comissao (%)</label><input type="number" id="pdf-com" value="'+_pdfParams.com+'" step="0.1"></div>'
+    +'<div class="f"><label>Frete saida (%)</label><input type="number" id="pdf-frt" value="'+_pdfParams.frtS+'" step="0.1"></div>'
+    +'<div class="f"><label>Taxas cartao (%)</label><input type="number" id="pdf-tax" value="'+_pdfParams.tax+'" step="0.1"></div>'
+    +'<div class="f"><label>Margem desejada (%)</label><input type="number" id="pdf-mrg" value="'+_pdfParams.mrg+'" step="0.1"></div>'
+    +'</div>'
+    +'<div class="btns">'
+    +'<button class="btn p" id="btn-conf-pdf">Gerar PDF</button>'
+    +'<button class="btn" id="btn-cancel-pdf">Cancelar</button>'
+    +'</div>';
+  ov.appendChild(div);
+  document.body.appendChild(ov);
+  var indices=lista.map(function(p){return prods.indexOf(p);});
+  document.getElementById('btn-conf-pdf').onclick=function(){confirmarGerarPDF(indices);};
+  document.getElementById('btn-cancel-pdf').onclick=function(){ov.remove();};
+}
+
+function confirmarGerarPDF(indices){
+  _pdfParams.com=parseFloat(document.getElementById('pdf-com').value)||3;
+  _pdfParams.frtS=parseFloat(document.getElementById('pdf-frt').value)||2;
+  _pdfParams.tax=parseFloat(document.getElementById('pdf-tax').value)||2;
+  _pdfParams.mrg=parseFloat(document.getElementById('pdf-mrg').value)||20;
+  var lista=indices.map(function(i){return prods[i];}).filter(Boolean);
+  var win=window.open('','_blank');
+  if(!win){ toast('Habilite popups para gerar o PDF.'); return; }
+  var relHtml=buildRelatorioHTML(lista);
+  win.document.open();
+  win.document.write(relHtml);
+  win.document.close();
+  var pdfOv=document.getElementById('pdfov');
+  if(pdfOv)pdfOv.remove();
+}
+
+function fRpdf(v){ return 'R$ '+parseFloat(v||0).toFixed(2).replace('.',','); }
+function fPct2(v){ return parseFloat(v||0).toFixed(1)+'%'; }
+
+function buildRelatorioHTML(lista){
+  var emp = curEmpresa || {};
+  var cnpjFmt = emp.cnpj ? fCNPJ(emp.cnpj) : '';
+  var regime = getRegime();
+  var regLabel = regime==='simples'?'Simples Nacional':regime==='presumido'?'Lucro Presumido':regime==='real'?'Lucro Real':'Nao configurado';
+  var dataHoje = new Date().toLocaleDateString('pt-BR');
+  var com=_pdfParams.com, frtS=_pdfParams.frtS, tax=_pdfParams.tax, mrg=_pdfParams.mrg;
+  var LOGO = window._TOTALI_LOGO||'';
+
+  function fmtR(v){ return 'R$ '+parseFloat(v||0).toFixed(2).replace('.',','); }
+  function fmtP(v){ return parseFloat(v||0).toFixed(2).replace('.',',')+'%'; }
+
+  function secHeader(title, bg, color){
+    bg = bg||'#1b2f4e'; color = color||'#ffffff';
+    return '<tr><td colspan="2" style="background:'+bg+';color:'+color+';padding:7px 12px;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase">'+title+'</td></tr>';
+  }
+
+  function dataRow(label, value, bold, indent, highlight){
+    var lStyle='padding:5px 12px 5px '+(indent?'24px':'12px')+';font-size:10px;'+(bold?'font-weight:700;':'')+(highlight?'background:#f8f9fa;':'');
+    var vStyle='padding:5px 12px;font-size:10px;text-align:right;font-family:Courier New,monospace;'+(bold?'font-weight:700;':'')+(highlight?'background:#f8f9fa;':'');
+    return '<tr><td style="'+lStyle+'">'+label+'</td><td style="'+vStyle+'">'+value+'</td></tr>';
+  }
+
+  function totalRow(label, value){
+    return '<tr style="border-top:2px solid #1b2f4e"><td style="padding:7px 12px;font-size:11px;font-weight:700;background:#f0f4f8">'+label+'</td>'
+      +'<td style="padding:7px 12px;font-size:11px;font-weight:700;text-align:right;font-family:Courier New,monospace;background:#f0f4f8">'+value+'</td></tr>';
+  }
+
+  var produtosHTML = lista.map(function(p, pi){
+    var pv = p.precoVenda || calcPVAuto(p, com, frtS, tax, mrg);
+    var d = calcDRE(p, pv, com, frtS, tax);
+    var c = d.c;
+    var tipoProdLabel = p.tipoProd==='st'?'Substituicao Tributaria':p.tipoProd==='monofasico'?'ST Monofasico':'Tributado normal';
+    var fornPrincipal = (p.fornecedoresProd||[]).find(function(f){return f.principal;});
+
+    return '<div style="page-break-inside:avoid;margin-bottom:28px">'
+      // Produto header
+      +'<table style="width:100%;border-collapse:collapse;margin-bottom:0">'
+      +'<tr><td colspan="2" style="background:#1b2f4e;color:#ffffff;padding:9px 14px;font-size:12px;font-weight:700">'
+      +(pi+1)+'. '+p.desc+'</td></tr>'
+      +'<tr style="background:#eef2f7">'
+      +'<td style="padding:5px 14px;font-size:9px;color:#555">NCM: '+(p.ncm||'—')+'  ·  Tipo: '+tipoProdLabel+'  ·  '
+      +(fornPrincipal?'Fornecedor: '+esc(fornPrincipal.razaoSocial||'—'):'Sem fornecedor')+'</td>'
+      +'<td style="padding:5px 14px;font-size:9px;color:#555;text-align:right">EAN: '+(p.cEAN||'—')+'</td></tr>'
+      +'</table>'
+
+      // Duas colunas: custo + preço
+      +'<table style="width:100%;border-collapse:collapse;border:1px solid #dde3ec">'
+      // Custo
+      +secHeader('Composicao do Custo')
+      +dataRow('Custo de aquisicao',fmtR(c.cu),false,true)
+      +dataRow('(+) IPI ('+( p.ipi||0)+'%)',fmtR(c.ipiR),false,true)
+      +dataRow('(+) Frete de entrada',fmtR(c.fr),false,true)
+      +(p.temST?dataRow('(+) ICMS ST efetivo',fmtR(c.stR),false,true):'')
+      +(c.antecR>0?dataRow('(+) ICMS Antecipado',fmtR(c.antecR),false,true):'')
+      +(c.fcpR>0?dataRow('(+) FCP',fmtR(c.fcpR),false,true):'')
+      +totalRow('= CUSTO TOTAL',fmtR(d.ct))
+
+      // Formação
+      +secHeader('Formacao do Preco de Venda')
+      +(regime==='simples'
+        ?dataRow('DAS — '+tipoProdLabel,fmtP(d.das),false,true)
+        :dataRow('ICMS ('+(p.alqInt||params.alqInt||0)+'%)',fmtP(p.alqInt||params.alqInt||0),false,true)
+         +dataRow('PIS',fmtP(d.pisA),false,true)
+         +dataRow('COFINS',fmtP(d.cofA),false,true))
+      +dataRow('Comissao',fmtP(com),false,true)
+      +dataRow('Frete de saida',fmtP(frtS),false,true)
+      +dataRow('Taxas de cartao',fmtP(tax),false,true)
+      +dataRow('Margem desejada',fmtP(mrg),false,true)
+      +totalRow('= PRECO DE VENDA',fmtR(pv))
+      +dataRow('Markup real',fmtP(d.mkpR),false,true)
+      +dataRow('Margem real sobre PV',fmtP(d.mf),false,true)
+
+      // DRE
+      +secHeader('Demonstrativo de Resultado (DRE)')
+      +dataRow('Receita bruta (100%)',fmtR(pv),true,false,true)
+      +(regime==='simples'
+        ?dataRow('(-) DAS '+d.das+'%','- '+fmtR(d.dasTotal),false,true)
+        :((!p.temST?dataRow('(-) ICMS','- '+fmtR(d.icmsL),false,true):'')
+         +dataRow('(-) PIS '+d.pisA+'%','- '+fmtR(d.pisL),false,true)
+         +dataRow('(-) COFINS '+d.cofA+'%','- '+fmtR(d.cofL),false,true)))
+      +'<tr style="border-top:1px solid #dde3ec"><td style="padding:5px 12px;font-size:10px;font-weight:700">= Receita liquida</td>'
+      +'<td style="padding:5px 12px;font-size:10px;font-weight:700;text-align:right;font-family:Courier New,monospace">'+fmtR(d.recLiq)+' ('+fmtP(d.recLiq/pv*100)+')</td></tr>'
+      +dataRow('(-) CPV','- '+fmtR(d.ct),false,true)
+      +'<tr style="border-top:1px solid #dde3ec"><td style="padding:5px 12px;font-size:10px;font-weight:700">= Lucro bruto</td>'
+      +'<td style="padding:5px 12px;font-size:10px;font-weight:700;text-align:right;font-family:Courier New,monospace">'+fmtR(d.lucroBruto)+' ('+fmtP(d.lucroBruto/pv*100)+')</td></tr>'
+      +dataRow('(-) Despesas operacionais','- '+fmtR(d.despOp),false,true)
+      +'<tr style="border-top:2px solid #1b2f4e"><td style="padding:8px 12px;font-size:11px;font-weight:700;background:#1b2f4e;color:white">= LUCRO OPERACIONAL</td>'
+      +'<td style="padding:8px 12px;font-size:11px;font-weight:700;text-align:right;font-family:Courier New,monospace;background:#1b2f4e;color:#4ade80">'+fmtR(d.lucroOp)+' ('+fmtP(d.lucroOp/pv*100)+')</td></tr>'
+      +'</table></div>';
+  }).join('<div style="border-top:1px dashed #ccc;margin:16px 0"></div>');
+
+  // Tabela resumo
+  var resumoHTML = '<div style="page-break-inside:avoid">'
+    +'<table style="width:100%;border-collapse:collapse;border:1px solid #dde3ec">'
+    +'<tr><td colspan="6" style="background:#1b2f4e;color:white;padding:7px 12px;font-size:10px;font-weight:700;text-transform:uppercase">Resumo — '+lista.length+' Produto(s)</td></tr>'
+    +'<tr style="background:#eef2f7">'
+    +'<th style="padding:6px 10px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#444">Produto</th>'
+    +'<th style="padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;color:#444">NCM</th>'
+    +'<th style="padding:6px 10px;text-align:right;font-size:9px;font-weight:700;text-transform:uppercase;color:#444">Custo Total</th>'
+    +'<th style="padding:6px 10px;text-align:right;font-size:9px;font-weight:700;text-transform:uppercase;color:#444">Preco Venda</th>'
+    +'<th style="padding:6px 10px;text-align:right;font-size:9px;font-weight:700;text-transform:uppercase;color:#444">Markup</th>'
+    +'<th style="padding:6px 10px;text-align:right;font-size:9px;font-weight:700;text-transform:uppercase;color:#444">Margem</th>'
+    +'</tr>'
+    +lista.map(function(p,pi){
+      var pv=p.precoVenda||calcPVAuto(p,com,frtS,tax,mrg);
+      var d=calcDRE(p,pv,com,frtS,tax);
+      return'<tr style="border-bottom:1px solid #eee;'+(pi%2===0?'':'background:#fafbfc')+'">'
+        +'<td style="padding:6px 10px;font-size:10px;font-weight:600">'+esc(p.desc)+'</td>'
+        +'<td style="padding:6px 10px;font-size:9px;color:#666;text-align:center">'+(p.ncm||'—')+'</td>'
+        +'<td style="padding:6px 10px;text-align:right;font-family:Courier New,monospace;font-size:10px">'+fmtR(d.ct)+'</td>'
+        +'<td style="padding:6px 10px;text-align:right;font-family:Courier New,monospace;font-size:10px;font-weight:700;color:#b8952a">'+fmtR(pv)+'</td>'
+        +'<td style="padding:6px 10px;text-align:right;font-family:Courier New,monospace;font-size:10px">'+fmtP(d.mkpR)+'</td>'
+        +'<td style="padding:6px 10px;text-align:right;font-family:Courier New,monospace;font-size:10px">'+fmtP(d.mf)+'</td>'
+        +'</tr>';
+    }).join('')+'</table></div>';
+
+  return '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">'
+    +'<title>Relatorio de Preco — '+esc(emp.razaoSocial||'Totali Precify')+'</title>'
+    +'<style>'
+    +'*{box-sizing:border-box;margin:0;padding:0}'
+    +'body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#222;background:#fff;padding:28px 32px}'
+    +'@media print{'
+    +'body{padding:0}'
+    +'.no-print{display:none!important}'
+    +'@page{margin:1.5cm;size:A4}'
+    +'.page-break{page-break-after:always}'
+    +'}'
+    +'</style></head><body>'
+
+    // ── HEADER ──
+    +'<table style="width:100%;border-collapse:collapse;margin-bottom:20px;border-bottom:2px solid #1b2f4e;padding-bottom:12px">'
+    +'<tr><td style="vertical-align:middle;padding-bottom:10px">'
+    +'<img src="data:image/png;base64,'+LOGO+'" style="height:38px;display:block" alt="Totali"><br>'
+    +'<span style="font-size:16px;font-weight:900;color:#1b2f4e">'+esc(emp.razaoSocial||'Totali Precify')+'</span><br>'
+    +'<span style="font-size:9px;color:#666">CNPJ: '+cnpjFmt+'</span>'
+    +(emp.endereco&&emp.endereco.cidade?'<br><span style="font-size:9px;color:#666">'+esc(emp.endereco.cidade)+(emp.endereco.uf?' — '+emp.endereco.uf:'')+'</span>':'')
+    +'</td>'
+    +'<td style="text-align:right;vertical-align:top;padding-bottom:10px">'
+    +'<span style="font-size:9px;color:#888">Emitido em: '+dataHoje+'</span>'
+    +'</td></tr></table>'
+
+    // ── TITULO ──
+    +'<div style="text-align:center;margin-bottom:18px">'
+    +'<div style="font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">RELATORIO DE FORMACAO DE PRECO</div>'
+    +'<div style="font-size:11px;color:#555;margin-top:3px">'+regLabel+(regime==='simples'&&params.dasTrib?' &middot; DAS Tributado: '+params.dasTrib+'%':'')
+    +(regime==='simples'&&params.dasST?' &middot; DAS ST: '+params.dasST+'%':'')+'</div>'
+    +'<div style="font-size:10px;color:#888;margin-top:2px">Parametros: Comissao '+com+'% &middot; Frete saida '+frtS+'% &middot; Taxas '+tax+'% &middot; Margem desejada '+mrg+'%</div>'
+    +'</div>'
+
+    // ── PRODUTOS ──
+    +produtosHTML
+
+    // ── RESUMO ──
+    +'<div style="margin-top:20px">'+resumoHTML+'</div>'
+
+    // ── NOTA ──
+    +'<div style="background:#f8f9fa;border:1px solid #e0e0e0;border-radius:4px;padding:8px 12px;margin-top:16px;font-size:9px;color:#666">'
+    +'<b>Nota:</b> Calculo estimativo baseado nos parametros configurados. Os precos de venda podem variar conforme negociacao comercial. '
+    +'Valores calculados com base no regime '+regLabel+'. Data de referencia: '+dataHoje+'.'
+    +'</div>'
+
+    // ── ASSINATURA ──
+    +'<table style="width:100%;margin-top:32px;border-collapse:collapse">'
+    +'<tr>'
+    +'<td style="width:45%;text-align:center;padding-top:28px;border-top:1px solid #333;font-size:10px;font-weight:700">'
+    +esc(emp.razaoSocial||'Empresa')+'<br>'
+    +'<span style="font-weight:400;color:#555;font-size:9px">Representante Legal</span>'
+    +'</td>'
+    +'<td style="width:10%"></td>'
+    +'<td style="width:45%;text-align:center;padding-top:28px;border-top:1px solid #333;font-size:10px;font-weight:700">'
+    +'Totali Precify<br>'
+    +'<span style="font-weight:400;color:#555;font-size:9px">Sistema de Formacao de Preco</span>'
+    +'</td>'
+    +'</tr>'
+    +'<tr><td colspan="3" style="padding-top:24px;font-size:9px;color:#888;text-align:center">'
+    +'Gerado por Totali Precify &middot; totalicontabilidade.com.br &middot; '+dataHoje
+    +'</td></tr>'
+    +'</table>'
+
+    +'<scr'+'ipt>window.onload=function(){window.print();};</scr'+'ipt>'
     +'</body></html>';
 }
 
@@ -3267,6 +3589,7 @@ function toast(msg){
   setTimeout(function(){t.style.opacity='0';setTimeout(function(){t.remove();},300);},2800);
 }
 document.addEventListener('click',function(e){if(e.target.classList&&e.target.classList.contains('overlay'))e.target.remove();});
+
 
 
 
