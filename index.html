@@ -121,6 +121,9 @@ table{width:100%;border-collapse:collapse;font-size:10px}th{text-align:left;padd
 <script>
 
 
+
+
+
 // PDF MODULE
 var prodsSelecionados = [];
 var _pdfParams = {com:3, frtS:2, tax:2, mrg:20};
@@ -253,6 +256,9 @@ function confirmarGerarPDF(indices){
   win.document.open();
   win.document.write(relHtml);
   win.document.close();
+  win.addEventListener('load',function(){
+    setTimeout(function(){win.print();},300);
+  });
   var pdfOv=document.getElementById('pdfov');
   if(pdfOv)pdfOv.remove();
 }
@@ -2103,7 +2109,10 @@ return'<div class="ptab"><button class="ptb on" id="ptb0" onclick="stabP(0)">Pro
 +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
 +'<label style="font-size:10px;color:var(--t2);display:flex;align-items:center;gap:5px;cursor:pointer">'
 +'<input type="checkbox" id="chk-all" onchange="toggleTodosSel()"> Selecionar todos</label>'
-+'<button class="btn p xs" id="btn-pdf-sel" style="display:none" onclick="gerarPDFSelecionados()">Gerar PDF</button>'
++'<div style="display:flex;gap:6px;align-items:center">'
++'<span style="font-size:9px;color:var(--t2)">Selecione produtos para gerar PDF</span>'
++'<button class="btn p xs" id="btn-pdf-sel" style="display:none" onclick="gerarPDFSelecionados()">&#128196; Gerar PDF dos selecionados</button>'
++'</div>'
 +'</div>'
 +'<div style="overflow-x:auto"><table>'
 +'<tr><th style="width:32px"></th><th>Produto</th><th>NCM</th><th>Tipo</th><th>Custo</th><th>IPI</th><th>ST ef.</th><th>Custo total</th><th>Markup</th><th>Preço venda</th><th>Status</th><th></th></tr>'
@@ -2121,7 +2130,7 @@ return'<tr>'
 +'<td>'+(p.precoVenda?fR(p.precoVenda):'<span style="color:var(--t3)">—</span>')+'</td>'
 +'<td>'+sBadge(cmpSt(p))+'</td>'
 +'<td style="display:flex;gap:4px">'
-+'<button class="btn xs p" onclick="gerarPDFProd('+i+')" title="PDF">&#128196;</button>'
++'<button class="btn xs g" onclick="gerarPDFProd('+i+')" title="Gerar PDF deste produto">PDF</button>'
 +'<button class="btn xs p" onclick="openPM('+i+')">Preço</button>'
 +'<button class="btn xs" onclick="editP('+i+')">Editar</button>'
 +'<button class="btn xs d" onclick="delP('+i+')">&times;</button>'
@@ -2362,7 +2371,10 @@ function rPreco(){
         +'<td>'+(p.temST?'<span class="badge byy">'+p.stEf.toFixed(2)+'%</span>':'—')+'</td>'
         +'<td>'+(p.precoVenda?fR(p.precoVenda):'<span style="color:var(--t3)">—</span>')+'</td>'
         +'<td>'+sBadge(cmpSt(p))+'</td>'
-        +'<td><button class="btn xs p" onclick="openPM('+i+')">Precificar</button></td></tr>';
+        +'<td style="display:flex;gap:4px">'
++'<button class="btn xs p" onclick="openPM('+i+')">Precificar</button>'
++'<button class="btn xs g" onclick="gerarPDFProd('+i+')">PDF</button>'
+        +'</td></tr>';
     }).join('')+'</table></div>')+'</div>';
 }
 
@@ -2675,6 +2687,9 @@ function toast(msg){
   setTimeout(function(){t.style.opacity='0';setTimeout(function(){t.remove();},300);},2800);
 }
 document.addEventListener('click',function(e){if(e.target.classList&&e.target.classList.contains('overlay'))e.target.remove();});
+
+
+
 
 
 </script>
