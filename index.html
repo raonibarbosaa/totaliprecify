@@ -70,7 +70,7 @@ table{width:100%;border-collapse:collapse;font-size:10px}th{text-align:left;padd
 /* Override do tema dark dentro do preview e print-area — forçar cores corretas */
 .pdf-modal-body table, .pdf-modal-body td, .pdf-modal-body th,
 #print-area table, #print-area td, #print-area th {
-  color:#111 !important; font-family:Arial,Helvetica,sans-serif !important;
+  color:#111; font-family:Arial,Helvetica,sans-serif !important;
   border-bottom:none; text-transform:none; letter-spacing:0; font-weight:normal;
 }
 .pdf-modal-body tr:hover td, #print-area tr:hover td { background:inherit !important; }
@@ -351,15 +351,15 @@ function fmtP(v){return parseFloat(v||0).toFixed(2).replace('.',',')+'%';}
 var _zebra=0;
 function dRow(l,v,b,ind){var bg=(_zebra++%2===0)?'#ffffff':'#f9fafb';return '<tr class="no-break" style="background:'+bg+'"><td style="padding:6px 14px 6px '+(ind?'28px':'14px')+';font-size:10pt;color:#111;'+(b?'font-weight:700;':'font-weight:400;')+'border:1px solid #E5E7EB">'+l+'</td><td style="padding:6px 14px;font-size:10pt;color:#111;text-align:right;font-family:Courier New,monospace;'+(b?'font-weight:700;':'font-weight:500;')+'border:1px solid #E5E7EB">'+v+'</td></tr>';}
 function totRow(l,v){return '<tr class="no-break" style="background:#F5EDD8"><td style="padding:8px 14px;font-size:10.5pt;font-weight:700;color:#111;border:1px solid #E5D5A8">'+l+'</td><td style="padding:8px 14px;font-size:10.5pt;font-weight:700;color:#111;text-align:right;font-family:Courier New,monospace;border:1px solid #E5D5A8">'+v+'</td></tr>';}
-function secH(t){_zebra=0;return '<tr><td colspan="2" style="background:#1b2f4e;color:#fff;padding:7px 14px;font-size:9.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px">'+t+'</td></tr>';}
+function secH(t){_zebra=0;return '<tr><td colspan="2" style="background:#1b2f4e;color:#E8B963;padding:7px 14px;font-size:9.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px">'+t+'</td></tr>';}
 var prodHTML=lista.map(function(p,pi){
 var pv=p.precoVenda||calcPVAuto(p,com,frtS,tax,mrg);
 var d=calcDRE(p,pv,com,frtS,tax);
 var c=d.c;
 var tipL=p.tipoProd==='st'?'ST':p.tipoProd==='monofasico'?'ST Mono':'Tributado';
 var fp=(p.fornecedoresProd||[]).find(function(f){return f.principal;});
-return '<div class="no-break" style="margin-bottom:20px"><table style="width:100%;border-collapse:collapse">'
-+'<tr><td colspan="2" style="background:#1b2f4e;color:#fff;padding:9px 14px;font-size:11pt;font-weight:700;letter-spacing:.2px">'+(pi+1)+'. '+esc(p.desc)+'</td></tr>'
+return '<div style="margin-bottom:18px"><table style="width:100%;border-collapse:collapse">'
++'<tr><td colspan="2" style="background:#1b2f4e;color:#E8B963;padding:9px 14px;font-size:11pt;font-weight:700;letter-spacing:.2px">'+(pi+1)+'. '+esc(p.desc)+'</td></tr>'
 +'<tr style="background:#eef2f7"><td style="padding:5px 14px;font-size:9pt;color:#444;border:1px solid #E5E7EB">NCM: '+(p.ncm||'--')+' &middot; '+tipL+(fp?' &middot; Forn: '+esc(fp.razaoSocial||'--'):'')+'</td>'
 +'<td style="padding:5px 14px;font-size:9pt;color:#444;text-align:right;border:1px solid #E5E7EB">EAN: '+(p.cEAN||'--')+'</td></tr>'
 +secH('Composicao do Custo')+dRow('Custo de aquisicao',fmtR(c.cu),false,true)
@@ -377,11 +377,11 @@ return '<div class="no-break" style="margin-bottom:20px"><table style="width:100
 +dRow('(-) CPV','- '+fmtR(d.ct),false,true)
 +'<tr class="no-break" style="background:#F5EDD8"><td style="padding:7px 14px;font-size:10pt;font-weight:700;color:#111;border:1px solid #E5D5A8">= Lucro bruto</td><td style="padding:7px 14px;font-size:10pt;font-weight:700;color:#111;text-align:right;font-family:Courier New,monospace;border:1px solid #E5D5A8">'+fmtR(d.lucroBruto)+' ('+fmtP(d.lucroBruto/pv*100)+')</td></tr>'
 +dRow('(-) Despesas operacionais','- '+fmtR(d.despOp),false,true)
-+'<tr class="no-break"><td style="padding:10px 14px;font-size:11pt;font-weight:700;background:#1b2f4e;color:#fff;letter-spacing:.3px">= LUCRO OPERACIONAL</td><td style="padding:10px 14px;font-size:11pt;font-weight:700;text-align:right;font-family:Courier New,monospace;background:#1b2f4e;color:#4ade80">'+fmtR(d.lucroOp)+' ('+fmtP(d.lucroOp/pv*100)+')</td></tr>'
++'<tr class="no-break"><td style="padding:10px 14px;font-size:11pt;font-weight:700;background:#1b2f4e;color:#E8B963;letter-spacing:.3px">= LUCRO OPERACIONAL</td><td style="padding:10px 14px;font-size:11pt;font-weight:700;text-align:right;font-family:Courier New,monospace;background:#1b2f4e;color:#4ade80">'+fmtR(d.lucroOp)+' ('+fmtP(d.lucroOp/pv*100)+')</td></tr>'
 +'</table></div>';
 }).join('<hr style="border:none;border-top:1px dashed #ccc;margin:10px 0">');
 var resumo='<table style="width:100%;border-collapse:collapse">'
-+'<tr><td colspan="6" style="background:#1b2f4e;color:#fff;padding:7px 14px;font-size:9.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Resumo -- '+lista.length+' produto(s)</td></tr>'
++'<tr><td colspan="6" style="background:#1b2f4e;color:#E8B963;padding:7px 14px;font-size:9.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Resumo -- '+lista.length+' produto(s)</td></tr>'
 +'<tr style="background:#eef2f7"><th style="padding:6px 10px;text-align:left;font-size:9pt;color:#333;border:1px solid #E5E7EB">Produto</th><th style="padding:6px 10px;font-size:9pt;color:#333;border:1px solid #E5E7EB">NCM</th><th style="padding:6px 10px;text-align:right;font-size:9pt;color:#333;border:1px solid #E5E7EB">Custo</th><th style="padding:6px 10px;text-align:right;font-size:9pt;color:#333;border:1px solid #E5E7EB">PV</th><th style="padding:6px 10px;text-align:right;font-size:9pt;color:#333;border:1px solid #E5E7EB">Markup</th><th style="padding:6px 10px;text-align:right;font-size:9pt;color:#333;border:1px solid #E5E7EB">Margem</th></tr>'
 +lista.map(function(p,pi){var pv=p.precoVenda||calcPVAuto(p,com,frtS,tax,mrg);var d=calcDRE(p,pv,com,frtS,tax);
 return'<tr class="no-break" style="background:'+(pi%2===0?'#ffffff':'#f9fafb')+'"><td style="padding:6px 10px;font-size:9.5pt;font-weight:600;color:#111;border:1px solid #E5E7EB">'+esc(p.desc)+'</td><td style="padding:6px 10px;font-size:9pt;color:#555;text-align:center;border:1px solid #E5E7EB">'+(p.ncm||'--')+'</td><td style="padding:6px 10px;text-align:right;font-family:Courier New,monospace;font-size:9.5pt;color:#111;border:1px solid #E5E7EB">'+fmtR(d.ct)+'</td><td style="padding:6px 10px;text-align:right;font-family:Courier New,monospace;font-size:9.5pt;font-weight:700;color:#92400e;border:1px solid #E5E7EB">'+fmtR(pv)+'</td><td style="padding:6px 10px;text-align:right;font-family:Courier New,monospace;font-size:9.5pt;color:#111;border:1px solid #E5E7EB">'+fmtP(d.mkpR)+'</td><td style="padding:6px 10px;text-align:right;font-family:Courier New,monospace;font-size:9.5pt;color:#111;border:1px solid #E5E7EB">'+fmtP(d.mf)+'</td></tr>';
