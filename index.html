@@ -1279,7 +1279,7 @@ function preencherCustoDaNota(notaIdx){
 // ── FIREBASE AUTH INIT ───────────────────────────────────
 var auth = firebase.auth();
 var db = firebase.firestore();
-db.enablePersistence({synchronizeTabs:true}).catch(function(){});
+
 var currentUser = null;
 var _lsStart = Date.now();
 
