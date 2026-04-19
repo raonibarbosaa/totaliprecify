@@ -42,7 +42,15 @@ table{width:100%;border-collapse:collapse;font-size:10px}th{text-align:left;padd
 .empty{text-align:center;padding:32px;color:var(--t3);font-size:11px}
 .ptab{display:flex;gap:2px;background:var(--bg3);border-radius:6px;padding:3px;width:fit-content;margin-bottom:12px}.ptb{border:none;background:none;font-family:var(--sans);font-size:10px;font-weight:700;color:var(--t2);padding:4px 12px;border-radius:5px;cursor:pointer;transition:all .15s}.ptb.on{background:var(--bg2);color:var(--text);border:1px solid var(--border)}
 .footer{background:var(--bg2);border-top:1px solid var(--border);padding:7px 18px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}.ftxt{font-size:9px;color:var(--t3)}
-.tw{position:relative;display:inline-flex;align-items:center;margin-left:4px}.ti{width:14px;height:14px;border-radius:50%;background:rgba(212,175,90,.15);border:1px solid rgba(212,175,90,.4);color:var(--gold2);font-size:9px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-family:serif;font-style:italic;flex-shrink:0}.tb{display:none;position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%);background:#080f1c;border:1px solid var(--bdr2);border-radius:8px;padding:10px 12px;width:260px;z-index:999;pointer-events:none}.tb.show{display:block}.tb-ttl{font-size:10px;font-weight:700;color:var(--gold2);margin-bottom:6px}.tb-row{font-size:9px;color:var(--t2);margin-bottom:4px;line-height:1.5}.tb-row b{color:var(--gold2)}
+.tw{position:relative;display:inline-flex;align-items:center;margin-left:4px}
+.ti{width:14px;height:14px;border-radius:50%;background:rgba(212,175,90,.15);border:1px solid rgba(212,175,90,.4);color:var(--gold2);font-size:9px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-family:serif;font-style:italic;flex-shrink:0;user-select:none}
+.ti:hover{background:rgba(212,175,90,.3)}
+.tb{display:none;position:fixed;background:#080f1c;border:1px solid var(--bdr2);border-radius:8px;padding:10px 12px;width:260px;max-width:calc(100vw - 24px);z-index:9999;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.tb.show{display:block}
+.tb-ttl{font-size:10px;font-weight:700;color:var(--gold2);margin-bottom:6px}
+.tb-row{font-size:9.5px;color:var(--t2);margin-bottom:4px;line-height:1.45}
+.tb-row b{color:var(--gold2)}
+.tb-ex{font-size:9.5px;color:var(--t2);margin-top:5px;padding-top:6px;border-top:1px solid var(--bdr2);line-height:1.45;font-style:italic}
 #ls{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s}
 .ls-logo{height:44px;max-width:220px;object-fit:contain;mix-blend-mode:screen;margin-bottom:28px}
 .ls-bar-wrap{width:180px;height:2px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-bottom:18px;position:relative}.ls-bar-fill{position:absolute;top:0;height:100%;background:linear-gradient(90deg,transparent,var(--gold),var(--gold2),transparent);animation:ldbar 1.6s ease-in-out infinite}
@@ -254,10 +262,10 @@ function abrirModalPDF(lista){
   div.innerHTML='<div class="mt2">Gerar relatorio PDF</div>'
     +'<div class="ms2">'+lista.length+' produto(s) selecionado(s)</div>'
     +'<div class="g2" style="margin-bottom:12px">'
-    +'<div class="f"><label>Comissao (%)</label><input type="number" id="pdf-com" value="'+_pdfParams.com+'" step="0.1"></div>'
-    +'<div class="f"><label>Frete saida (%)</label><input type="number" id="pdf-frt" value="'+_pdfParams.frtS+'" step="0.1"></div>'
-    +'<div class="f"><label>Taxas cartao (%)</label><input type="number" id="pdf-tax" value="'+_pdfParams.tax+'" step="0.1"></div>'
-    +'<div class="f"><label>Margem desejada (%)</label><input type="number" id="pdf-mrg" value="'+_pdfParams.mrg+'" step="0.1"></div>'
+    +'<div class="f"><label>Comissao (%) '+tip('pdfp_c','Comissão','Percentual de comissão de venda usado nos cálculos do relatório.','Política comercial da empresa.','3%.')+'</label><input type="number" id="pdf-com" value="'+_pdfParams.com+'" step="0.1"></div>'
+    +'<div class="f"><label>Frete saida (%) '+tip('pdfp_f','Frete saída','Percentual médio de frete de saída usado nos cálculos.','Histórico de fretes de venda.','2%.')+'</label><input type="number" id="pdf-frt" value="'+_pdfParams.frtS+'" step="0.1"></div>'
+    +'<div class="f"><label>Taxas cartao (%) '+tip('pdfp_t','Taxas de cartão','Percentual médio de taxas das maquininhas usado nos cálculos.','Extrato Cielo, Stone, etc.','2%.')+'</label><input type="number" id="pdf-tax" value="'+_pdfParams.tax+'" step="0.1"></div>'
+    +'<div class="f"><label>Margem desejada (%) '+tip('pdfp_m','Margem desejada','Margem operacional alvo para os produtos do relatório.','Estratégia comercial.','20%.')+'</label><input type="number" id="pdf-mrg" value="'+_pdfParams.mrg+'" step="0.1"></div>'
     +'</div>'
     +'<div class="btns">'
     +'<button class="btn p" id="btn-conf-pdf">Gerar PDF</button>'
@@ -1460,26 +1468,56 @@ function isAdmin(){ return currentUser && currentUser.email === ADMIN_EMAIL; }
 function isSuperAdmin(){ return isAdmin(); }
 
 // ── TOOLTIP ──────────────────────────────────────────────
-function tip(id,ttl,oque,onde,ex,pos){
-  var cls='tb'+(pos==='L'?' L':pos==='R'?' R':'');
-  return '<span class="tw"><span class="ti" onclick="tShow(event,\'tp_'+id+'\')" onblur="tHide(\'tp_'+id+'\')">i</span>'
-    +'<span class="'+cls+'" id="tp_'+id+'">'
+function tip(id,ttl,oque,onde,ex){
+  // posicionamento e' dinamico (calculado em tShow), nao precisa mais de L/R
+  return '<span class="tw"><span class="ti" onclick="tShow(event,\'tp_'+id+'\')" tabindex="0">i</span>'
+    +'<span class="tb" id="tp_'+id+'">'
     +'<div class="tb-ttl">'+ttl+'</div>'
     +'<div class="tb-row"><b>O que é:</b> '+oque+'</div>'
-    +'<div class="tb-row"><b>Onde encontrar:</b> '+onde+'</div>'
-    +'<div class="tb-ex"><b style="color:var(--gold2)">Ex:</b> '+ex+'</div>'
+    +(onde?'<div class="tb-row"><b>Onde encontrar:</b> '+onde+'</div>':'')
+    +(ex?'<div class="tb-ex"><b style="color:var(--gold2)">Ex:</b> '+ex+'</div>':'')
     +'</span></span>';
 }
 function tShow(e,id){
   e.stopPropagation();
+  // fecha tooltip ativo
   if(activeTip&&activeTip!==id){var p=document.getElementById(activeTip);if(p)p.classList.remove('show');}
   var el=document.getElementById(id);
   if(!el)return;
-  el.classList.toggle('show');
-  activeTip=el.classList.contains('show')?id:null;
+  // toggle
+  if(el.classList.contains('show')){el.classList.remove('show');activeTip=null;return;}
+  // posiciona ANTES de mostrar pra evitar flicker
+  // Pega bounding do icone (parent: .tw)
+  var icon=el.parentElement;
+  var iconRect=icon.getBoundingClientRect();
+  // primeiro mostra fora da tela pra medir largura real
+  el.style.left='-9999px';el.style.top='-9999px';
+  el.classList.add('show');
+  var tipRect=el.getBoundingClientRect();
+  var tipW=tipRect.width,tipH=tipRect.height;
+  var vw=window.innerWidth,vh=window.innerHeight;
+  var margin=8;
+  // posicao IDEAL: acima do icone, centralizado
+  var top=iconRect.top-tipH-7;
+  var left=iconRect.left+(iconRect.width/2)-(tipW/2);
+  // se nao cabe acima, joga abaixo
+  if(top<margin){top=iconRect.bottom+7;}
+  // se ainda nao cabe (tela pequena), gruda no topo
+  if(top+tipH>vh-margin){top=Math.max(margin,vh-tipH-margin);}
+  // ajuste horizontal: nao deixa sair pelos lados
+  if(left<margin)left=margin;
+  if(left+tipW>vw-margin)left=vw-tipW-margin;
+  el.style.left=left+'px';
+  el.style.top=top+'px';
+  activeTip=id;
 }
 function tHide(id){var el=document.getElementById(id);if(el)el.classList.remove('show');if(activeTip===id)activeTip=null;}
-document.addEventListener('click',function(){if(activeTip)tHide(activeTip);});
+// fecha ao clicar fora
+document.addEventListener('click',function(e){
+  if(activeTip && !e.target.classList.contains('ti'))tHide(activeTip);
+});
+// fecha ao rolar (evita tooltip flutuante em posicao errada)
+document.addEventListener('scroll',function(){if(activeTip)tHide(activeTip);},true);
 
 // ── HELPERS ──────────────────────────────────────────────
 function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
@@ -2002,9 +2040,9 @@ function rParams(){
   }
   var simplesFields=r==='simples'?
     '<div class="g3f" style="margin-top:14px">'
-    +'<div class="f"><label>DAS — tributados (%)</label><input type="number" id="pd_trib" value="'+(params.dasTrib||'')+'" placeholder="ex: 8,68" step="0.01" oninput="params.dasTrib=this.value"></div>'
-    +'<div class="f"><label>DAS — com ST (%)</label><input type="number" id="pd_st" value="'+(params.dasST||'')+'" placeholder="ex: 5,47" step="0.01" oninput="params.dasST=this.value"></div>'
-    +'<div class="f"><label>DAS — ST monofásico (%)</label><input type="number" id="pd_mono" value="'+(params.dasMono||'')+'" placeholder="ex: 6,10" step="0.01" oninput="params.dasMono=this.value"></div>'
+    +'<div class="f"><label>DAS — tributados (%) '+tip('das_t','DAS Tributados','Alíquota efetiva do DAS para produtos tributados normalmente.','Calculado conforme Anexo I/II da LC 123/2006, baseado no faturamento dos últimos 12 meses (RBT12).','8,68% se a empresa está na faixa correspondente.')+'</label><input type="number" id="pd_trib" value="'+(params.dasTrib||'')+'" placeholder="ex: 8,68" step="0.01" oninput="params.dasTrib=this.value"></div>'
+    +'<div class="f"><label>DAS — com ST (%) '+tip('das_s','DAS com ST','Alíquota DAS reduzida (sem ICMS) para produtos com substituição tributária.','Mesmo cálculo do DAS tributado, mas excluindo o ICMS da alíquota efetiva.','5,47% se DAS normal é 8,68% e ICMS na faixa é 3,21%.')+'</label><input type="number" id="pd_st" value="'+(params.dasST||'')+'" placeholder="ex: 5,47" step="0.01" oninput="params.dasST=this.value"></div>'
+    +'<div class="f"><label>DAS — ST monofásico (%) '+tip('das_m','DAS ST Monofásico','DAS reduzido para produtos monofásicos (combustíveis, refrigerantes, cosméticos seletivos).','Mesma lógica do DAS com ST mas excluindo PIS/COFINS também.','Geralmente menor que o DAS com ST.')+'</label><input type="number" id="pd_mono" value="'+(params.dasMono||'')+'" placeholder="ex: 6,10" step="0.01" oninput="params.dasMono=this.value"></div>'
     +'</div>':'';
   var presumidoInfo=r==='presumido'?'<div style="background:var(--bg3);border-radius:8px;padding:12px 14px;margin-top:14px"><div style="font-size:10px;font-weight:700;color:var(--t2);margin-bottom:8px">PIS 0,65% + COFINS 3,00% — cumulativo</div>'+pbr('PIS','0,65%')+pbr('COFINS','3,00%')+'<div style="font-size:9px;color:var(--t3);margin-top:6px">Sem crédito de PIS/COFINS na entrada.</div></div>':'';
   var realInfo=r==='real'?'<div style="background:var(--bg3);border-radius:8px;padding:12px 14px;margin-top:14px"><div style="font-size:10px;font-weight:700;color:var(--t2);margin-bottom:8px">PIS 1,65% + COFINS 7,60% — não cumulativo</div>'+pbr('PIS','1,65%')+pbr('COFINS','7,60%')+'<div style="font-size:9px;color:var(--t3);margin-top:6px">Crédito da entrada abate débito da saída.</div></div>':'';
@@ -2012,7 +2050,7 @@ function rParams(){
     +'<div class="mcards">'+rCard('simples','Simples Nacional','DAS único')+rCard('presumido','Lucro Presumido','PIS 0,65% + COFINS 3%')+rCard('real','Lucro Real','PIS 1,65% + COFINS 7,6% com crédito')+'<div></div></div>'
     +simplesFields+presumidoInfo+realInfo+'</div>'
     +'<div class="card"><div class="ct">ICMS padrão</div>'
-    +'<div class="g2"><div class="f"><label>Alíquota interna padrão (%)</label>'
+    +'<div class="g2"><div class="f"><label>Alíquota interna padrão (%) '+tip('icms_p','ICMS interno padrão','Alíquota padrão de ICMS aplicada nas vendas internas no seu estado. Pode ser sobrescrita por produto.','Definida pela legislação estadual (RICMS).','19% em SE, 18% em SP, 17% em MG.')+'</label>'
     +'<input type="number" id="pd_icms" value="'+(params.alqInt||'')+'" placeholder="ex: 19" step="0.01" oninput="params.alqInt=this.value"></div></div></div>'
     +'<div class="btns"><button class="btn p" onclick="saveParams()">Salvar parâmetros</button></div>';
 }
@@ -2411,7 +2449,7 @@ function bForm(){
     +'<div class="f"><label>NCM '+T('ncm','NCM','Código de 8 dígitos de classificação fiscal.','NF de compra, campo NCM.','3402.20.00.','L')+'</label><input id="fn" placeholder="0000.00.00"></div>'
     +'<div class="f"><label>CEST '+T('cest','CEST','Identifica ST. Nem todo produto tem.','NF de compra, campo CEST.','17.049.00.','L')+'</label><input id="fc" placeholder="00.000.00"></div>'
     +'<div class="f"><label>Código interno</label><input id="fci2"></div>'
-    +'<div class="f"><label>Markup desejado (%)</label><input type="number" id="fmk" placeholder="ex: 30"></div>'
+    +'<div class="f"><label>Markup desejado (%) '+tip('mkp','Markup desejado','Multiplicador do custo para chegar ao PV. NÃO confunda com margem.','Definido pelo gestor por produto ou categoria.','30% de markup: PV = custo × 1,30. Margem real será menor.')+'</label><input type="number" id="fmk" placeholder="ex: 30"></div>'
     +'</div></div>'
     +'<div class="card"><div class="ct">Tipo fiscal</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:4px">'
@@ -2420,19 +2458,19 @@ function bForm(){
     +'<div class="mc" id="tp_monofasico" onclick="selTipo(\'monofasico\')"><div class="mct">ST monofásico</div><div class="mcs">Alíquota DAS específica</div></div>'
     +'</div></div>'
     +'<div class="card"><div class="ct">Custo de aquisição</div><div class="g3f" style="margin-bottom:6px">'
-    +'<div class="f"><label>Custo unitário (R$)</label><input type="number" id="fcu" placeholder="0,00" oninput="atuST()"></div>'
-    +'<div class="f"><label>IPI (%)</label><input type="number" id="fipi" placeholder="0" oninput="atuST()"></div>'
-    +'<div class="f"><label>Frete entrada (R$)</label><input type="number" id="ffre" placeholder="0,00" oninput="atuST()"></div>'
+    +'<div class="f"><label>Custo unitário (R$) '+tip('cu','Custo unitário','Preço pago ao fornecedor por unidade do produto, sem impostos de venda.','NF de compra, campo Valor Unitário (vUnCom).','R$ 894,65.')+'</label><input type="number" id="fcu" placeholder="0,00" oninput="atuST()"></div>'
+    +'<div class="f"><label>IPI (%) '+tip('ipi','IPI','Imposto sobre Produtos Industrializados. Compõe o custo se você não é contribuinte de IPI.','NF de compra, campo IPI (pIPI).','5% se a NF mostra IPI de 5%. 0% se isento.')+'</label><input type="number" id="fipi" placeholder="0" oninput="atuST()"></div>'
+    +'<div class="f"><label>Frete entrada (R$) '+tip('fre','Frete de entrada','Custo do transporte da mercadoria do fornecedor até você, em reais por unidade.','NF de transporte do fornecedor (CT-e) ou contrato.','R$ 2,50 por unidade se o frete total foi R$ 250 para 100 unidades.')+'</label><input type="number" id="ffre" placeholder="0,00" oninput="atuST()"></div>'
     +'</div><div id="cprev" style="font-size:9px;color:var(--t2);font-family:var(--mono);margin-top:4px"></div></div>'
     +'<div class="card"><div class="ct">ICMS</div><div class="g2" style="margin-bottom:10px">'
-    +'<div class="f"><label>Aliq. interna ICMS (%)</label><input type="number" id="fai" placeholder="Usa padrão dos parâmetros"></div>'
-    +'<div class="f"><label>Aliq. origem ICMS (%)</label><input type="number" id="fao" placeholder="7"></div>'
+    +'<div class="f"><label>Aliq. interna ICMS (%) '+tip('ai','Alíquota interna ICMS','Alíquota de ICMS que você aplica nas vendas dentro do seu estado.','Definida pela legislação estadual (RICMS-SE: 19% padrão).','19% em SE, 18% em SP, 12% em SC, etc.')+'</label><input type="number" id="fai" placeholder="Usa padrão dos parâmetros"></div>'
+    +'<div class="f"><label>Aliq. origem ICMS (%) '+tip('ao','Alíquota de origem','Alíquota de ICMS destacada na NF de compra (estado de origem do fornecedor).','NF de compra, campo ICMS (pICMS).','7% se compra de SP/SE para fora; 12% interestadual sul/sudeste.')+'</label><input type="number" id="fao" placeholder="7"></div>'
     +'</div>'
     +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
     +'<span style="font-size:10px;font-weight:700;color:var(--t2)">Possui ICMS ST?</span>'
     +'<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px"><input type="checkbox" id="fst" onchange="togST()"> Sim</label></div>'
     +'<div id="stf" style="display:none"><div style="display:flex;align-items:flex-end;gap:8px">'
-    +'<div class="f" style="flex:1"><label>Aliq. efetiva ST (%)</label><input type="number" id="fse" readonly></div>'
+    +'<div class="f" style="flex:1"><label>Aliq. efetiva ST (%) '+tip('se','Alíquota efetiva ST','Percentual real de ICMS-ST sobre o custo, calculado pela calculadora ao lado.','Calculado automaticamente pela calculadora ST com base em MVA, BC e alíquotas.','Ex: 13,42% se calcado a partir do MVA aplicado.')+'</label><input type="number" id="fse" readonly></div>'
     +'<button class="btn" onclick="openST()" style="flex-shrink:0;margin-bottom:1px">Calcular ST</button></div></div></div>'
     +'<div class="card"><div class="ct">ICMS Antecipado e FCP</div>'
     +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
@@ -2440,9 +2478,9 @@ function bForm(){
     +'<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px"><input type="checkbox" id="fantec" onchange="togAntec()"> Sim</label></div>'
     +'<div id="antecf" style="display:none">'
     +'<div style="display:flex;align-items:flex-end;gap:8px;margin-bottom:8px">'
-    +'<div class="f" style="flex:1"><label>Aliq. efetiva antecipação (%)</label><input type="number" id="fal_antec" readonly></div>'
+    +'<div class="f" style="flex:1"><label>Aliq. efetiva antecipação (%) '+tip('antec','Antecipação ICMS','ICMS recolhido antecipadamente em compras interestaduais (diferencial de alíquota).','Legislação estadual. Calcule a alíquota efetiva pela calculadora ao lado.','SE cobra antecipação ao receber mercadoria de outros estados.')+'</label><input type="number" id="fal_antec" readonly></div>'
     +'<button class="btn" onclick="openAntec()" style="flex-shrink:0;margin-bottom:1px">Calcular antecipação</button></div>'
-    +'<div class="f"><label>Alíquota FCP (%)</label><input type="number" id="ffcp" placeholder="0" step="0.01" value="0"></div></div></div>'
+    +'<div class="f"><label>Alíquota FCP (%) '+tip('fcp','FCP — Fundo de Combate à Pobreza','Adicional sobre alguns produtos (geralmente bebidas, cigarros, perfumaria).','Legislação estadual. Consulte o RICMS para o NCM do produto.','2% sobre cervejas em alguns estados.')+'</label><input type="number" id="ffcp" placeholder="0" step="0.01" value="0"></div></div></div>'
     +'<div class="card"><div class="ct">Fornecedores do produto</div>'
     +'<div id="prod_forn_list"></div>'
     +'<button class="btn xs" onclick="addProdForn()" style="margin-top:4px">+ Vincular fornecedor</button></div>'
@@ -2745,12 +2783,12 @@ function showPM(){
     +'<div class="mc" onclick="selMC(\'vp\',this)"><div class="mct">3. Valor percebido</div><div class="mcs">Ancoragem no cliente</div></div>'
     +'</div><div class="divider"></div>'
     +'<div class="g3f" style="margin-bottom:8px">'
-    +'<div class="f"><label>Comissão (%)</label><input type="number" id="pcom" value="3" oninput="calcP()"></div>'
-    +'<div class="f"><label>Frete saída (%)</label><input type="number" id="pfrts" value="2" oninput="calcP()"></div>'
-    +'<div class="f"><label>Taxas cartão (%)</label><input type="number" id="ptax" value="2" oninput="calcP()"></div>'
-    +'<div class="f"><label>Margem desejada (%)</label><input type="number" id="pmrg" value="20" oninput="calcP()"></div>'
-    +'<div class="f"><label>Menor conc. (R$)</label><input type="number" id="pcc" value="'+(mc2||'')+'" placeholder="Opcional" oninput="calcP()"></div>'
-    +'<div class="f"><label>Valor percebido (R$)</label><input type="number" id="ppv" placeholder="Opcional" oninput="calcP()"></div>'
+    +'<div class="f"><label>Comissão (%) '+tip('pm_com','Comissão de venda','Percentual pago ao vendedor sobre o preço de venda.','Combinado com a equipe comercial ou política interna.','3% se o vendedor recebe R$ 3 a cada R$ 100 vendidos.')+'</label><input type="number" id="pcom" value="3" oninput="calcP()"></div>'
+    +'<div class="f"><label>Frete saída (%) '+tip('pm_frt','Frete de saída','Custo de entrega do produto ao cliente, em percentual do PV.','Média histórica das notas de saída ou contrato com transportadora.','2% se o frete médio é R$ 2 a cada R$ 100 vendidos.')+'</label><input type="number" id="pfrts" value="2" oninput="calcP()"></div>'
+    +'<div class="f"><label>Taxas cartão (%) '+tip('pm_tax','Taxas de cartão','Percentual cobrado pela maquininha/adquirente na venda em cartão.','Extrato da Cielo, Stone, PagSeguro, etc. Taxa média ponderada débito/crédito.','2% se você paga em média 2% por venda à máquina.')+'</label><input type="number" id="ptax" value="2" oninput="calcP()"></div>'
+    +'<div class="f"><label>Margem desejada (%) '+tip('pm_mrg','Margem de lucro desejada','Lucro operacional alvo sobre o preço de venda. NÃO é markup.','Definido pelo gestor com base no setor e estratégia.','20% significa que 20% do preço final será lucro operacional.')+'</label><input type="number" id="pmrg" value="20" oninput="calcP()"></div>'
+    +'<div class="f"><label>Menor conc. (R$) '+tip('pm_cc','Menor concorrente','Preço mais baixo praticado por concorrentes, usado como teto de comparação.','Pesquisa de mercado, sites concorrentes, cotações.','Se o concorrente mais barato vende por R$ 50, informe 50.')+'</label><input type="number" id="pcc" value="'+(mc2||'')+'" placeholder="Opcional" oninput="calcP()"></div>'
+    +'<div class="f"><label>Valor percebido (R$) '+tip('pm_pv','Valor percebido','Preço que o cliente acha justo pagar (ancoragem psicológica).','Pesquisa com clientes, posicionamento de marca, valor percebido.','Se o cliente acha justo pagar R$ 80, informe 80.')+'</label><input type="number" id="ppv" placeholder="Opcional" oninput="calcP()"></div>'
     +'</div><div id="pres"></div>'
     +'<div class="btns" style="margin-top:8px"><button class="btn p" id="savebtn" style="display:none">Salvar preço</button>'
     +'<button class="btn g" onclick="gerarPDFProd(priceProdIdx)">&#128196; PDF</button>'
@@ -2768,12 +2806,12 @@ function openST(){
   var ov=document.createElement('div');ov.className='overlay';ov.id='stov';
   ov.innerHTML='<div class="modal"><div class="mt2">Calculadora ICMS ST</div>'
     +'<div class="g2" style="margin-bottom:8px">'
-    +'<div class="f"><label>Custo (R$)</label><input type="number" id="sc" oninput="cST()"></div>'
-    +'<div class="f"><label>IPI (%)</label><input type="number" id="si" oninput="cST()"></div>'
-    +'<div class="f"><label>Frete (R$)</label><input type="number" id="sf" oninput="cST()"></div>'
-    +'<div class="f"><label>MVA (%)</label><input type="number" id="sm" placeholder="ex: 30" oninput="cST()"></div>'
-    +'<div class="f"><label>Aliq. origem (%)</label><input type="number" id="so" oninput="cST()"></div>'
-    +'<div class="f"><label>Aliq. interna (%)</label><input type="number" id="sd" oninput="cST()"></div>'
+    +'<div class="f"><label>Custo (R$) '+tip('st_c','Custo','Custo unitário do produto, sem ICMS de venda.','NF de compra, valor unitário (vUnCom).','R$ 100,00.')+'</label><input type="number" id="sc" oninput="cST()"></div>'
+    +'<div class="f"><label>IPI (%) '+tip('st_i','IPI','Percentual de IPI sobre o custo. Compõe a base de cálculo do ST.','NF de compra, campo IPI.','5%.')+'</label><input type="number" id="si" oninput="cST()"></div>'
+    +'<div class="f"><label>Frete (R$) '+tip('st_f','Frete','Frete por unidade. Compõe a base de cálculo do ST.','NF de transporte (CT-e) ou contrato.','R$ 2,00 por unidade.')+'</label><input type="number" id="sf" oninput="cST()"></div>'
+    +'<div class="f"><label>MVA (%) '+tip('st_m','MVA — Margem de Valor Agregado','Percentual de margem presumida pelo Fisco para calcular a base de ST.','Tabela MVA da SEFAZ do seu estado por NCM/CEST. Pode ter MVA ajustada.','30% para alguns produtos; 65% para bebidas, etc.')+'</label><input type="number" id="sm" placeholder="ex: 30" oninput="cST()"></div>'
+    +'<div class="f"><label>Aliq. origem (%) '+tip('st_o','Alíquota de origem','Alíquota de ICMS destacada na NF de compra (vai gerar crédito).','NF de compra, campo ICMS (pICMS).','7% interestadual ou 12% sul/sudeste.')+'</label><input type="number" id="so" oninput="cST()"></div>'
+    +'<div class="f"><label>Aliq. interna (%) '+tip('st_d','Alíquota interna','Alíquota de ICMS do seu estado para esse produto. É o teto sobre a base de ST.','RICMS-SE ou tabela ICMS por NCM.','19% padrão em SE.')+'</label><input type="number" id="sd" oninput="cST()"></div>'
     +'</div><div id="sts"></div>'
     +'<div class="btns"><button class="btn p" onclick="apST()">Aplicar</button>'
     +'<button class="btn" onclick="clsOv(\'stov\')">Cancelar</button></div></div>';
@@ -2821,12 +2859,12 @@ function openAntec(){
   var ov=document.createElement('div');ov.className='overlay';ov.id='antov';
   ov.innerHTML='<div class="modal"><div class="mt2">Calculadora ICMS Antecipado + FCP</div>'
     +'<div class="g2" style="margin-bottom:8px">'
-    +'<div class="f"><label>Custo (R$)</label><input type="number" id="ac_cu" oninput="cAntec()"></div>'
-    +'<div class="f"><label>IPI (%)</label><input type="number" id="ac_ipi" oninput="cAntec()"></div>'
-    +'<div class="f"><label>Frete (R$)</label><input type="number" id="ac_fr" oninput="cAntec()"></div>'
-    +'<div class="f"><label>Aliq. interna (%)</label><input type="number" id="ac_ai" oninput="cAntec()"></div>'
-    +'<div class="f"><label>Aliq. origem (%)</label><input type="number" id="ac_ao" oninput="cAntec()"></div>'
-    +'<div class="f"><label>Aliq. FCP (%)</label><input type="number" id="ac_fcp" placeholder="0" oninput="cAntec()"></div>'
+    +'<div class="f"><label>Custo (R$) '+tip('ac_c','Custo','Valor unitário do produto na NF de compra.','NF de compra (vUnCom).','R$ 100,00.')+'</label><input type="number" id="ac_cu" oninput="cAntec()"></div>'
+    +'<div class="f"><label>IPI (%) '+tip('ac_i','IPI','Percentual de IPI sobre o custo. Compõe a base de antecipação.','NF de compra.','5%.')+'</label><input type="number" id="ac_ipi" oninput="cAntec()"></div>'
+    +'<div class="f"><label>Frete (R$) '+tip('ac_f','Frete','Frete por unidade. Compõe a base de antecipação.','CT-e ou contrato.','R$ 2,00 por unidade.')+'</label><input type="number" id="ac_fr" oninput="cAntec()"></div>'
+    +'<div class="f"><label>Aliq. interna (%) '+tip('ac_ai','Alíquota interna','ICMS do seu estado para esse produto.','RICMS estadual.','19% em SE.')+'</label><input type="number" id="ac_ai" oninput="cAntec()"></div>'
+    +'<div class="f"><label>Aliq. origem (%) '+tip('ac_ao','Alíquota de origem','ICMS destacado na NF (gera crédito).','NF de compra (pICMS).','7% ou 12%.')+'</label><input type="number" id="ac_ao" oninput="cAntec()"></div>'
+    +'<div class="f"><label>Aliq. FCP (%) '+tip('ac_fc','FCP','Adicional do Fundo de Combate à Pobreza, se aplicável.','RICMS estadual por NCM.','2% sobre cervejas, perfumes em alguns estados.')+'</label><input type="number" id="ac_fcp" placeholder="0" oninput="cAntec()"></div>'
     +'</div><div id="ac_steps"></div>'
     +'<div class="btns"><button class="btn p" onclick="apAntec()">Aplicar</button>'
     +'<button class="btn" onclick="clsOv(\'antov\')">Cancelar</button></div></div>';
