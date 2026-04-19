@@ -1558,14 +1558,41 @@ async function loadUserEmpresas(){
     var timeoutPromise = new Promise(function(_, rej){
       setTimeout(function(){ rej(new Error('TIMEOUT_FIRESTORE')); }, 20000);
     });
-    var snap = await Promise.race([queryPromise, timeoutPromise]);
-    empresas=[];
-    snap.forEach(function(doc){empresas.push(Object.assign({id:doc.id},doc.data()));});
-    console.log('[loadUserEmpresas] Encontradas:', empresas.length, 'empresas para uid', currentUser.uid);
+    var snap;
+    try {
+      snap = await Promise.race([queryPromise, timeoutPromise]);
+      empresas=[];
+      snap.forEach(function(doc){empresas.push(Object.assign({id:doc.id},doc.data()));});
+    } catch(queryErr) {
+      // Query principal falhou — nao joga erro ainda, tenta o fallback
+      console.warn('[loadUserEmpresas] Query principal falhou:', queryErr.message);
+      empresas = [];
+    }
+    console.log('[loadUserEmpresas] Query retornou:', empresas.length, 'empresas para uid', currentUser.uid);
 
-    // Carrega empresa ativa
-    var userDoc=await db.collection('users').doc(currentUser.uid).get(getOpts);
-    var empresaAtiva=userDoc.exists?userDoc.data().empresaAtiva:null;
+    // Carrega user doc (empresaAtiva)
+    var userDoc = await db.collection('users').doc(currentUser.uid).get(getOpts);
+    var empresaAtiva = userDoc.exists ? userDoc.data().empresaAtiva : null;
+
+    // FALLBACK CRITICO (principalmente Safari iOS): se a query com operador !=
+    // retornou vazia mas o usuario tem empresaAtiva salva no user doc,
+    // busca a empresa diretamente por ID. Isso contorna bugs de indice/cache
+    // do Firestore em nested fields no Safari.
+    if (empresas.length === 0 && empresaAtiva) {
+      console.log('[loadUserEmpresas] FALLBACK — tentando buscar empresa ativa por ID:', empresaAtiva);
+      try {
+        var empDoc = await db.collection('empresas').doc(empresaAtiva).get(getOpts);
+        if (empDoc.exists) {
+          empresas = [Object.assign({id: empDoc.id}, empDoc.data())];
+          console.log('[loadUserEmpresas] FALLBACK funcionou — empresa carregada:', empDoc.id);
+        } else {
+          console.warn('[loadUserEmpresas] FALLBACK — empresa ativa nao existe mais:', empresaAtiva);
+        }
+      } catch(fallbackErr) {
+        console.error('[loadUserEmpresas] FALLBACK falhou:', fallbackErr);
+        window._loadErr = 'Fallback: '+(fallbackErr.message||fallbackErr);
+      }
+    }
 
     if(empresaAtiva&&empresas.find(function(e){return e.id===empresaAtiva;})){
       await loadEmpresaData(empresaAtiva);
