@@ -1334,13 +1334,25 @@ function preencherCustoDaNota(notaIdx){
 var auth = firebase.auth();
 var db = firebase.firestore();
 
-// Safari iOS / redes corporativas: WebChannel falha silenciosamente.
-// experimentalAutoDetectLongPolling faz o SDK detectar e cair para long-polling.
+// Detecta Safari iOS (iPhone/iPad) — tem bugs conhecidos com WebChannel e IndexedDB
+var _isSafariIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (/^((?!chrome|android).)*safari/i.test(navigator.userAgent) && /Mac/.test(navigator.platform));
+
+// No Safari iOS: força long-polling (WebChannel falha silenciosamente).
+// Em outros navegadores: deixa auto-detectar para não prejudicar performance.
 try {
-  db.settings({
-    experimentalAutoDetectLongPolling: true,
-    merge: true
-  });
+  if(_isSafariIOS){
+    db.settings({
+      experimentalForceLongPolling: true,
+      merge: true
+    });
+    console.log('[Firestore] Safari iOS detectado — forcando long-polling');
+  } else {
+    db.settings({
+      experimentalAutoDetectLongPolling: true,
+      merge: true
+    });
+  }
 } catch(e) { console.warn('db.settings falhou:', e); }
 
 // Persistência de auth com fallback em cascata (Safari ITP / modo privado)
@@ -1516,7 +1528,10 @@ function svFornecedores(){
 
 async function loadEmpresaData(empId){
   try{
-    var snap=await db.collection('empresas').doc(empId).get();
+    // No Safari iOS, forca busca do servidor (cache IndexedDB pode estar corrompido).
+    // Em outros navegadores, deixa o SDK escolher (mais rapido).
+    var getOpts = _isSafariIOS ? {source:'server'} : undefined;
+    var snap=await db.collection('empresas').doc(empId).get(getOpts);
     if(snap.exists){
       var d=snap.data();
       curEmpresa=d;
@@ -1529,24 +1544,27 @@ async function loadEmpresaData(empId){
       notasFiscais=d.notasFiscais||[];
       conferencias=d.conferencias||[];
     }
-  }catch(e){console.error('loadEmpresaData:',e);}
+  }catch(e){console.error('loadEmpresaData:',e); window._loadErr = 'loadEmpresaData: '+(e.message||e);}
 }
 
 async function loadUserEmpresas(){
   try{
+    // No Safari iOS, forca servidor (nao usa cache local que pode estar corrompido)
+    var getOpts = _isSafariIOS ? {source:'server'} : undefined;
     // Race com timeout de 20s — Safari iOS pode travar queries silenciosamente
     var queryPromise = db.collection('empresas')
       .where('membros.'+currentUser.uid,'!=',null)
-      .get();
+      .get(getOpts);
     var timeoutPromise = new Promise(function(_, rej){
       setTimeout(function(){ rej(new Error('TIMEOUT_FIRESTORE')); }, 20000);
     });
     var snap = await Promise.race([queryPromise, timeoutPromise]);
     empresas=[];
     snap.forEach(function(doc){empresas.push(Object.assign({id:doc.id},doc.data()));});
+    console.log('[loadUserEmpresas] Encontradas:', empresas.length, 'empresas para uid', currentUser.uid);
 
     // Carrega empresa ativa
-    var userDoc=await db.collection('users').doc(currentUser.uid).get();
+    var userDoc=await db.collection('users').doc(currentUser.uid).get(getOpts);
     var empresaAtiva=userDoc.exists?userDoc.data().empresaAtiva:null;
 
     if(empresaAtiva&&empresas.find(function(e){return e.id===empresaAtiva;})){
@@ -1620,41 +1638,81 @@ function ren(){
 }
 
 function rSemEmpresa(){
-  // Se houve erro de carregamento (típico no Safari iOS), mostrar tela de erro
-  // em vez de enganar o usuário com "Nenhuma empresa cadastrada".
-  if(window._loadErr){
-    var isTimeout = /TIMEOUT/i.test(window._loadErr);
-    return '<div style="text-align:center;padding:60px 20px;max-width:480px;margin:0 auto">'
+  // Painel de diagnostico — ajuda a ver exatamente o que carregou
+  var uid = currentUser ? currentUser.uid : '(sem user)';
+  var email = currentUser ? currentUser.email : '(sem email)';
+  var empCount = empresas ? empresas.length : 0;
+  var ua = navigator.userAgent.replace(/^.*\((.*?)\).*$/, '$1').slice(0,50);
+  var isSafariStr = _isSafariIOS ? 'SIM (forcado long-polling)' : 'nao';
+  var online = navigator.onLine ? 'ONLINE' : 'OFFLINE';
+  var diag = '<details style="text-align:left;background:var(--bg3);border:1px solid var(--bdr2);border-radius:6px;padding:10px 14px;margin:12px auto;max-width:440px;font-size:10px;font-family:var(--mono);color:var(--t2)">'
+    +'<summary style="cursor:pointer;font-weight:700;color:var(--gold2);margin-bottom:6px">Diagnostico (toque para ver)</summary>'
+    +'<div style="line-height:1.7;word-break:break-all">'
+    +'<b>Conexao:</b> '+online+'<br>'
+    +'<b>User:</b> '+esc(email)+'<br>'
+    +'<b>UID:</b> '+esc(uid)+'<br>'
+    +'<b>Empresas carregadas:</b> '+empCount+'<br>'
+    +'<b>Safari iOS:</b> '+isSafariStr+'<br>'
+    +'<b>Navegador:</b> '+esc(ua)+'<br>'
+    +(window._loadErr?'<b style="color:var(--danger)">Erro:</b> '+esc(window._loadErr):'<b>Erro:</b> (nenhum)')
+    +'</div></details>';
+
+  // Se houve erro explicito OU se o usuario tem auth mas 0 empresas carregaram
+  // (sintoma classico do Safari iOS com cache corrompido), mostra tela de erro.
+  var suspeitoBug = currentUser && empCount===0 && !window._loadErr;
+  if(window._loadErr || suspeitoBug){
+    var isTimeout = window._loadErr && /TIMEOUT/i.test(window._loadErr);
+    var titulo = window._loadErr
+      ? 'Falha ao carregar dados'
+      : 'Sem empresas carregadas';
+    var msg = isTimeout
+      ? 'A conexao com o servidor demorou mais que o esperado.<br>Isso pode acontecer em redes instaveis ou no Safari do iPhone em modo privado.'
+      : (window._loadErr
+        ? 'Ocorreu um erro ao buscar suas empresas no servidor.<br>Verifique sua conexao e tente novamente.'
+        : 'Nenhuma empresa foi retornada. Se voce tem empresas cadastradas (vistas em outro dispositivo), tente limpar o cache e recarregar.');
+    return '<div style="text-align:center;padding:40px 20px;max-width:480px;margin:0 auto">'
       +'<div style="font-size:40px;margin-bottom:16px">⚠️</div>'
-      +'<div style="font-size:16px;font-weight:700;margin-bottom:8px">Falha ao carregar dados</div>'
-      +'<div style="font-size:11px;color:var(--t2);margin-bottom:18px;line-height:1.5">'
-      +(isTimeout
-        ? 'A conexão com o servidor demorou mais que o esperado.<br>Isso pode acontecer em redes instáveis ou no Safari do iPhone em modo privado. Tente recarregar.'
-        : 'Ocorreu um erro ao buscar suas empresas no servidor.<br>Verifique sua conexão e tente novamente.')
-      +'</div>'
-      +'<div style="font-size:9px;color:var(--t3);margin-bottom:18px;font-family:var(--mono);background:var(--bg3);padding:6px 10px;border-radius:4px;display:inline-block">'+esc(window._loadErr)+'</div>'
-      +'<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'
+      +'<div style="font-size:16px;font-weight:700;margin-bottom:8px">'+titulo+'</div>'
+      +'<div style="font-size:11px;color:var(--t2);margin-bottom:10px;line-height:1.5">'+msg+'</div>'
+      +diag
+      +'<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px">'
       +'<button class="btn p" onclick="recarregarDados()">↻ Tentar novamente</button>'
-      +'<button class="btn" onclick="location.reload()">Recarregar página</button>'
+      +'<button class="btn" onclick="limparCacheRecarregar()">Limpar cache e recarregar</button>'
       +'<button class="btn d" onclick="doLogout()">Sair</button>'
       +'</div></div>';
   }
   return'<div style="text-align:center;padding:60px 20px">'
     +'<div style="font-size:40px;margin-bottom:16px">🏢</div>'
     +'<div style="font-size:16px;font-weight:700;margin-bottom:8px">Nenhuma empresa cadastrada</div>'
-    +'<div style="font-size:11px;color:var(--t2);margin-bottom:24px">Cadastre sua empresa para começar a usar o sistema.</div>'
+    +'<div style="font-size:11px;color:var(--t2);margin-bottom:24px">Cadastre sua empresa para comecar a usar o sistema.</div>'
     +'<button class="btn p" onclick="go(\'empresas\')">+ Cadastrar empresa</button>'
     +'</div>';
 }
 
-// Reexecuta loadUserEmpresas sem recarregar a página (melhor UX no Safari iOS).
+// Reexecuta loadUserEmpresas sem recarregar a pagina (melhor UX no Safari iOS).
 async function recarregarDados(){
   if(!currentUser){ location.reload(); return; }
   window._loadErr = null;
   var el = document.getElementById('main');
-  if(el) el.innerHTML = '<div style="text-align:center;padding:60px 20px"><div style="font-size:11px;color:var(--t2)">Recarregando dados...</div></div>';
+  if(el) el.innerHTML = '<div style="text-align:center;padding:60px 20px"><div style="font-size:11px;color:var(--t2)">Recarregando dados do servidor...</div></div>';
   await loadUserEmpresas();
   ren();
+}
+
+// Limpa IndexedDB do Firestore (cache corrompido no Safari) e recarrega.
+async function limparCacheRecarregar(){
+  try {
+    if(window.indexedDB && indexedDB.databases){
+      var dbs = await indexedDB.databases();
+      for(var i=0;i<dbs.length;i++){
+        try { indexedDB.deleteDatabase(dbs[i].name); } catch(e){}
+      }
+    }
+    // Tenta terminate + clearPersistence do Firestore
+    try { await db.terminate(); } catch(e){}
+    try { await db.clearPersistence(); } catch(e){}
+  } catch(e){ console.warn('limparCache:', e); }
+  location.reload();
 }
 
 // ── DASHBOARD ────────────────────────────────────────────
