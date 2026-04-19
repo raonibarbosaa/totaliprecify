@@ -142,6 +142,7 @@ table{width:100%;border-collapse:collapse;font-size:10px}th{text-align:left;padd
 
 
 
+
 // PDF MODULE
 var prodsSelecionados = [];
 var _pdfParams = {com:3, frtS:2, tax:2, mrg:20};
@@ -237,7 +238,6 @@ function calcPVAuto(p, comP, frtSP, taxP, mrgP){
 }
 
 function abrirModalPDF(lista){
-  if(!paramOk()){ toast('Configure os parametros fiscais antes de gerar o PDF.'); return; }
   var ov=document.createElement('div');
   ov.className='overlay';
   ov.id='pdfov';
@@ -2733,6 +2733,7 @@ function toast(msg){
   setTimeout(function(){t.style.opacity='0';setTimeout(function(){t.remove();},300);},2800);
 }
 document.addEventListener('click',function(e){if(e.target.classList&&e.target.classList.contains('overlay'))e.target.remove();});
+
 
 
 
