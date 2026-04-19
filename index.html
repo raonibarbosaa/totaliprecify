@@ -93,6 +93,8 @@ firebase.initializeApp({
 <script>
 
 
+
+
 // PDF MODULE
 var prodsSelecionados = [];
 var _pdfParams = {com:3, frtS:2, tax:2, mrg:20};
@@ -1287,8 +1289,8 @@ function hideLs(){
   var ls=document.getElementById('ls');
   if(!ls)return;
   var elapsed=Date.now()-_lsStart;
-  var delay=Math.max(0,1200-elapsed);
-  setTimeout(function(){ls.style.opacity='0';setTimeout(function(){ls.style.display='none';},400);},delay);
+  var delay=Math.max(0,400-elapsed);
+  setTimeout(function(){ls.style.opacity='0';setTimeout(function(){ls.style.display='none';},300);},delay);
 }
 
 firebase.auth().onAuthStateChanged(function(user){
@@ -1297,7 +1299,9 @@ firebase.auth().onAuthStateChanged(function(user){
     loadUserEmpresas().then(function(){
       hideLs();
       document.getElementById('auth-screen').style.display='none';
-      document.getElementById('app').style.display='flex';
+      var _app=document.getElementById('app');
+      _app.style.display='flex';
+      setTimeout(function(){_app.style.opacity='1';},30);
       ren();
       checkBloqueado();
     });
@@ -2688,6 +2692,8 @@ function toast(msg){
   setTimeout(function(){t.style.opacity='0';setTimeout(function(){t.remove();},300);},2800);
 }
 document.addEventListener('click',function(e){if(e.target.classList&&e.target.classList.contains('overlay'))e.target.remove();});
+
+
 
 
 </script>
