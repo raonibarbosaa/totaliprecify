@@ -1334,6 +1334,25 @@ function preencherCustoDaNota(notaIdx){
 var auth = firebase.auth();
 var db = firebase.firestore();
 
+// Safari iOS / redes corporativas: WebChannel falha silenciosamente.
+// experimentalAutoDetectLongPolling faz o SDK detectar e cair para long-polling.
+try {
+  db.settings({
+    experimentalAutoDetectLongPolling: true,
+    merge: true
+  });
+} catch(e) { console.warn('db.settings falhou:', e); }
+
+// Persistência de auth com fallback em cascata (Safari ITP / modo privado)
+firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+  .catch(function(){
+    return firebase.auth().setPersistence(firebase.auth.Auth.Persistence.SESSION);
+  })
+  .catch(function(){
+    return firebase.auth().setPersistence(firebase.auth.Auth.Persistence.NONE);
+  })
+  .catch(function(e){ console.warn('setPersistence falhou:', e); });
+
 var currentUser = null;
 var _lsStart = Date.now();
 
@@ -1515,9 +1534,14 @@ async function loadEmpresaData(empId){
 
 async function loadUserEmpresas(){
   try{
-    var snap=await db.collection('empresas')
+    // Race com timeout de 20s — Safari iOS pode travar queries silenciosamente
+    var queryPromise = db.collection('empresas')
       .where('membros.'+currentUser.uid,'!=',null)
       .get();
+    var timeoutPromise = new Promise(function(_, rej){
+      setTimeout(function(){ rej(new Error('TIMEOUT_FIRESTORE')); }, 20000);
+    });
+    var snap = await Promise.race([queryPromise, timeoutPromise]);
     empresas=[];
     snap.forEach(function(doc){empresas.push(Object.assign({id:doc.id},doc.data()));});
 
@@ -1535,7 +1559,10 @@ async function loadUserEmpresas(){
       curEmpresa=null; curEmpresaId=null;
       prods=[]; fbase={}; params={}; fornecedores=[]; pedidos=[];
     }
-  }catch(e){console.error('loadUserEmpresas:',e);}
+  }catch(e){
+    console.error('loadUserEmpresas:',e);
+    window._loadErr = e.message||String(e);
+  }
 }
 
 async function trocarEmpresa(empId){
@@ -1593,12 +1620,41 @@ function ren(){
 }
 
 function rSemEmpresa(){
+  // Se houve erro de carregamento (típico no Safari iOS), mostrar tela de erro
+  // em vez de enganar o usuário com "Nenhuma empresa cadastrada".
+  if(window._loadErr){
+    var isTimeout = /TIMEOUT/i.test(window._loadErr);
+    return '<div style="text-align:center;padding:60px 20px;max-width:480px;margin:0 auto">'
+      +'<div style="font-size:40px;margin-bottom:16px">⚠️</div>'
+      +'<div style="font-size:16px;font-weight:700;margin-bottom:8px">Falha ao carregar dados</div>'
+      +'<div style="font-size:11px;color:var(--t2);margin-bottom:18px;line-height:1.5">'
+      +(isTimeout
+        ? 'A conexão com o servidor demorou mais que o esperado.<br>Isso pode acontecer em redes instáveis ou no Safari do iPhone em modo privado. Tente recarregar.'
+        : 'Ocorreu um erro ao buscar suas empresas no servidor.<br>Verifique sua conexão e tente novamente.')
+      +'</div>'
+      +'<div style="font-size:9px;color:var(--t3);margin-bottom:18px;font-family:var(--mono);background:var(--bg3);padding:6px 10px;border-radius:4px;display:inline-block">'+esc(window._loadErr)+'</div>'
+      +'<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'
+      +'<button class="btn p" onclick="recarregarDados()">↻ Tentar novamente</button>'
+      +'<button class="btn" onclick="location.reload()">Recarregar página</button>'
+      +'<button class="btn d" onclick="doLogout()">Sair</button>'
+      +'</div></div>';
+  }
   return'<div style="text-align:center;padding:60px 20px">'
     +'<div style="font-size:40px;margin-bottom:16px">🏢</div>'
     +'<div style="font-size:16px;font-weight:700;margin-bottom:8px">Nenhuma empresa cadastrada</div>'
     +'<div style="font-size:11px;color:var(--t2);margin-bottom:24px">Cadastre sua empresa para começar a usar o sistema.</div>'
     +'<button class="btn p" onclick="go(\'empresas\')">+ Cadastrar empresa</button>'
     +'</div>';
+}
+
+// Reexecuta loadUserEmpresas sem recarregar a página (melhor UX no Safari iOS).
+async function recarregarDados(){
+  if(!currentUser){ location.reload(); return; }
+  window._loadErr = null;
+  var el = document.getElementById('main');
+  if(el) el.innerHTML = '<div style="text-align:center;padding:60px 20px"><div style="font-size:11px;color:var(--t2)">Recarregando dados...</div></div>';
+  await loadUserEmpresas();
+  ren();
 }
 
 // ── DASHBOARD ────────────────────────────────────────────
