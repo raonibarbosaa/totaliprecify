@@ -283,6 +283,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <button class="nb" onclick="go('prod')">Produtos</button>
     <button class="nb" onclick="go('forn')">Fornecedores</button>
     <button class="nb" onclick="go('pedidos')">Pedidos</button>
+    <button class="nb" onclick="go('conf')">Confer&ecirc;ncia</button>
     <button class="nb" onclick="go('notas')">Notas Fiscais</button>
     <button class="nb" onclick="go('empresas')">Empresas</button>
     <button class="nb" onclick="go('preco')">Forma&ccedil;&atilde;o de Pre&ccedil;o</button>
@@ -298,6 +299,516 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 </div>
 <script>
+// ══════════════════════════════════════════════════════════
+// MÓDULO CONFERÊNCIA DE MERCADORIAS
+// ══════════════════════════════════════════════════════════
+
+var conferencias = [];
+var _confStep = 0;        // 0=origem 1=pedido 2=itens 3=confirmar
+var _confTipo = '';       // 'xml' | 'manual'
+var _confPedidoIdx = -1;  // índice do pedido vinculado
+var _confItens = [];      // itens em conferência
+var _confForn = null;     // {cnpj, razaoSocial}
+var _confNF = null;       // dados da nota fiscal
+var _confData = '';
+
+function svConferencias(){
+  if(!currentUser||!curEmpresaId)return;
+  db.collection('empresas').doc(curEmpresaId).set({
+    conferencias:conferencias, updatedAt:new Date().toISOString()
+  },{merge:true}).catch(function(e){console.error('svConf:',e);});
+}
+
+// ── TELA PRINCIPAL ────────────────────────────────────────
+var confTab = 0;
+function rConf(){
+  var pendentes = conferencias.filter(function(c){return c.status==='pendente'||c.status==='divergente';});
+  var conferidas = conferencias.filter(function(c){return c.status==='conferido';});
+  return '<div class="ptab">'
+    +'<button class="ptb'+(confTab===0?' on':'')+'" onclick="confStab(0)">Pendentes <span class="badge brr" style="margin-left:4px">'+pendentes.length+'</span></button>'
+    +'<button class="ptb'+(confTab===1?' on':'')+'" onclick="confStab(1)">Conferidas <span class="badge bgg" style="margin-left:4px">'+conferidas.length+'</span></button>'
+    +'<button class="ptb'+(confTab===2?' on':'')+'" onclick="confStab(2)">+ Nova conferência</button>'
+    +'</div>'
+    +'<div id="conf-list-pend"'+(confTab===0?'':' style="display:none"')+'>'+rConfLista(pendentes, true)+'</div>'
+    +'<div id="conf-list-conf"'+(confTab===1?'':' style="display:none"')+'>'+rConfLista(conferidas, false)+'</div>'
+    +'<div id="conf-nova"'+(confTab===2?'':' style="display:none"')+'>'+rConfNova()+'</div>';
+}
+
+function confStab(idx){
+  confTab=idx;
+  ['conf-list-pend','conf-list-conf','conf-nova'].forEach(function(id,i){
+    var el=document.getElementById(id);
+    if(el)el.style.display=i===idx?'block':'none';
+  });
+  document.querySelectorAll('.ptb').forEach(function(b,i){b.classList.toggle('on',i===idx);});
+  if(idx===2){resetConf();var el=document.getElementById('conf-nova');if(el)el.innerHTML=rConfNova();}
+}
+
+function rConfLista(lista, isPend){
+  if(!lista.length) return '<div class="empty">'+(isPend?'Nenhuma conferência pendente.':'Nenhuma conferência realizada.')+'</div>';
+  return'<div class="card"><div style="overflow-x:auto"><table>'
+    +'<tr><th>NF</th><th>Fornecedor</th><th>Data</th><th>Pedido</th><th>Itens</th><th>Total</th><th>Status</th><th></th></tr>'
+    +lista.map(function(c){
+      var realIdx=conferencias.indexOf(c);
+      var ped=c.pedidoId?((curEmpresa&&curEmpresa.pedidos)||[]).find(function(p){return p.id===c.pedidoId;}):null;
+      var diverg=c.itens.filter(function(it){return it.divergenciaQtd||it.divergenciaPreco;}).length;
+      var stBadge=c.status==='conferido'?'<span class="badge bgg">Conferido</span>'
+        :c.status==='divergente'?'<span class="badge brr">Divergente</span>'
+        :'<span class="badge byy">Pendente</span>';
+      return'<tr>'
+        +'<td><span class="tag">'+(c.notaFiscalNum?'NF-'+esc(c.notaFiscalNum):'Manual')+'</span></td>'
+        +'<td style="font-size:10px;max-width:140px;overflow:hidden;text-overflow:ellipsis;font-weight:600">'+(c.fornecedor?esc(c.fornecedor.razaoSocial):'—')+'</td>'
+        +'<td style="font-family:var(--mono);font-size:9px">'+(c.dataConferencia||'—')+'</td>'
+        +'<td>'+(ped?'<span class="tag">'+esc(ped.numero||'PED')+'</span>':'—')+'</td>'
+        +'<td style="text-align:center">'+(c.itens||[]).length+(diverg>0?'<span style="color:var(--danger)"> ('+diverg+'⚠)</span>':'')+'</td>'
+        +'<td style="font-family:var(--mono)">'+fR(c.totais&&c.totais.vNF||0)+'</td>'
+        +'<td>'+stBadge+'</td>'
+        +'<td style="display:flex;gap:4px">'
+        +'<button class="btn xs p" data-idx="'+realIdx+'" onclick="abrirConf(this)">Ver</button>'
+        +(c.status!=='conferido'?'<button class="btn xs g" data-idx="'+realIdx+'" onclick="reabrirConf('+realIdx+')">Retomar</button>':'')
+        +'</td></tr>';
+    }).join('')+'</table></div></div>';
+}
+
+// ── NOVA CONFERÊNCIA ──────────────────────────────────────
+function resetConf(){
+  _confStep=0;_confTipo='';_confPedidoIdx=-1;_confItens=[];
+  _confForn=null;_confNF=null;_confData=new Date().toISOString().slice(0,10);
+}
+
+function rConfNova(){
+  if(_confStep===0) return rConfStep0();
+  if(_confStep===1) return rConfStep1();
+  if(_confStep===2) return rConfStep2();
+  if(_confStep===3) return rConfStep3();
+  return '';
+}
+
+function rConfStep0(){
+  return'<div class="card"><div class="ct">Passo 1 — Tipo de entrada</div>'
+    +'<div class="mcards" style="margin-bottom:0">'
+    +'<div class="mc sel" onclick="selConfTipo(\'xml\',this)"><div class="mct">📄 Importar XML</div><div class="mcs">Entrada com NF-e eletrônica</div></div>'
+    +'<div class="mc" onclick="selConfTipo(\'manual\',this)"><div class="mct">✍️ Entrada manual</div><div class="mcs">Sem nota ou nota em papel</div></div>'
+    +'</div></div>'
+    +'<div id="conf-tipo-form"></div>'
+    +'<div class="btns"><button class="btn p" onclick="confProx()">Próximo →</button></div>';
+}
+
+function selConfTipo(tipo, el){
+  _confTipo=tipo;
+  document.querySelectorAll('#conf-nova .mc').forEach(function(c){c.classList.remove('sel');});
+  el.classList.add('sel');
+  var frm=document.getElementById('conf-tipo-form');
+  if(!frm)return;
+  if(tipo==='xml'){
+    frm.innerHTML='<div class="card"><div class="ct">Importar XML da NF-e</div>'
+      +'<div class="drop" onclick="document.getElementById(\'conf-xi\').click()" style="cursor:pointer">'
+      +'<div style="font-size:18px;opacity:.4;margin-bottom:4px">📄</div>'
+      +'<div style="font-size:11px;font-weight:700">Clique para selecionar o XML</div></div>'
+      +'<input type="file" id="conf-xi" accept=".xml" style="display:none" onchange="processarXMLConf(this.files[0])">'
+      +'<div id="conf-xml-status" style="font-size:10px;color:var(--t2);margin-top:6px"></div>'
+      +'</div>';
+  } else {
+    var fornOpts=fornecedores.map(function(f){return'<option value="'+f.cnpj+'">'+esc(f.razaoSocial)+'</option>';}).join('');
+    frm.innerHTML='<div class="card"><div class="ct">Dados da entrada</div>'
+      +'<div class="g2" style="margin-bottom:8px">'
+      +'<div class="f"><label>Fornecedor *</label><select id="conf-forn"><option value="">Selecione...</option>'+fornOpts+'</select></div>'
+      +'<div class="f"><label>Data da entrada</label><input type="date" id="conf-data" value="'+_confData+'"></div>'
+      +'<div class="f"><label>Número da nota (se houver)</label><input id="conf-nnum" placeholder="Ex: 938"></div>'
+      +'</div></div>';
+  }
+}
+
+function processarXMLConf(file){
+  if(!file)return;
+  var r=new FileReader();
+  r.onload=function(e){
+    try{
+      var doc=new DOMParser().parseFromString(e.target.result,'text/xml');
+      function gvd(el,tag){var n=el.getElementsByTagName(tag)[0];return n?n.textContent:'';}
+      var emitEl=doc.getElementsByTagName('emit')[0]||doc;
+      var emitCNPJ=gvd(emitEl,'CNPJ')||gv2(doc,'CNPJ');
+      var emitNome=gvd(emitEl,'xNome')||gv2(doc,'xNome');
+      var ideEl=doc.getElementsByTagName('ide')[0]||doc;
+      var chaveEl=doc.getElementsByTagName('chNFe')[0];
+      var chave=chaveEl?chaveEl.textContent:'';
+      var numero=gvd(ideEl,'nNF')||'';
+      var serie=gvd(ideEl,'serie')||'';
+      var dataEmissao=(gvd(ideEl,'dhEmi')||gvd(ideEl,'dEmi')||'').slice(0,10);
+      var totEl=doc.getElementsByTagName('ICMSTot')[0]||doc;
+      _confForn={cnpj:emitCNPJ,razaoSocial:emitNome};
+      _confData=dataEmissao||_confData;
+      _confNF={chaveNFe:chave,numero:numero,serie:serie,dataEmissao:dataEmissao,
+        totais:{
+          vNF:parseFloat(gvd(doc,'vNF')||'0'),
+          vProd:parseFloat(gvd(totEl,'vProd')||'0'),
+          vST:parseFloat(gvd(totEl,'vST')||'0'),
+          vIPI:parseFloat(gvd(totEl,'vIPI')||'0'),
+          vFrete:parseFloat(gvd(totEl,'vFrete')||'0')
+        }
+      };
+      var dets=doc.getElementsByTagName('det');
+      _confItens=Array.from(dets).map(function(det){
+        var cu=parseFloat(gv2(det,'vUnCom')||'0');
+        var qtd=parseFloat(gv2(det,'qCom')||'1');
+        var vST=parseFloat(gv2(det,'vICMSST')||'0');
+        var vIPI=parseFloat(gv2(det,'vIPI')||'0');
+        var ncm=gv2(det,'NCM');
+        var cean=gv2(det,'cEAN')||gv2(det,'cEANTrib')||'';
+        var cprod=gv2(det,'cProd')||'';
+        var xprod=gv2(det,'xProd')||'';
+        // Tentar vincular produto
+        var cruz=cruzarProdutoXML(cean,cprod,ncm,xprod,emitCNPJ);
+        return{
+          descNF:xprod,ncm:ncm,cean:cean,cprod:cprod,
+          unidade:gv2(det,'uCom')||'UN',
+          qtdNF:qtd,qtdPedida:0,qtdConferida:qtd,
+          custoNF:cu,custoPedido:0,custoConfirmado:cu,
+          vST:vST,vIPI:vIPI,
+          produtoIdx:cruz.match==='exato'?cruz.produtoIdx:null,
+          produtoMatch:cruz.match,
+          produtoIdxSugerido:cruz.match==='provavel'?cruz.produtoIdx:null,
+          divergenciaQtd:false,divergenciaPreco:false,
+          statusItem:'pendente'
+        };
+      });
+      salvarFornecedorAutoXML(emitNome,emitCNPJ);
+      var el=document.getElementById('conf-xml-status');
+      if(el)el.innerHTML='<span style="color:var(--green)">✓ NF-'+esc(numero)+' lida — '+_confItens.length+' item(ns) — '+esc(emitNome)+'</span>';
+    }catch(ex){
+      var el=document.getElementById('conf-xml-status');
+      if(el)el.innerHTML='<span style="color:var(--danger)">Erro ao ler XML: '+ex.message+'</span>';
+    }
+  };
+  r.readAsText(file,'UTF-8');
+}
+
+function confProx(){
+  if(_confStep===0){
+    if(!_confTipo){toast('Selecione o tipo de entrada.');return;}
+    if(_confTipo==='xml'&&!_confItens.length){toast('Importe o XML primeiro.');return;}
+    if(_confTipo==='manual'){
+      var forn=document.getElementById('conf-forn');
+      var cnpj=forn?forn.value:'';
+      if(!cnpj){toast('Selecione o fornecedor.');return;}
+      var fornObj=fornecedores.find(function(f){return f.cnpj===cnpj;});
+      _confForn={cnpj:cnpj,razaoSocial:fornObj?fornObj.razaoSocial:cnpj};
+      _confData=document.getElementById('conf-data').value||_confData;
+    }
+    _confStep=1;
+  } else if(_confStep===1){
+    _confStep=2;
+    if(_confTipo==='manual'&&!_confItens.length){
+      _confItens=[{descNF:'',ncm:'',cean:'',cprod:'',unidade:'UN',
+        qtdNF:1,qtdPedida:0,qtdConferida:1,
+        custoNF:0,custoPedido:0,custoConfirmado:0,
+        vST:0,vIPI:0,produtoIdx:null,produtoMatch:'novo',
+        divergenciaQtd:false,divergenciaPreco:false,statusItem:'pendente'}];
+    }
+  } else if(_confStep===2){
+    _confStep=3;
+  }
+  var el=document.getElementById('conf-nova');
+  if(el)el.innerHTML=rConfNova();
+}
+
+function rConfStep1(){
+  var pedEnviados=((curEmpresa&&curEmpresa.pedidos)||[]).filter(function(p){return p.status==='enviado'||p.status==='rascunho';});
+  var pedOpts=pedEnviados.map(function(p,i){
+    var forn=fornecedores.find(function(f){return f.id===p.fornecedorId;});
+    var realIdx=((curEmpresa&&curEmpresa.pedidos)||[]).indexOf(p);
+    return'<option value="'+realIdx+'">'+esc(p.numero||'PED-'+(i+1))+' — '+(forn?esc(forn.razaoSocial):p.fornecedorId)+' ('+p.dataEmissao+')</option>';
+  }).join('');
+  return'<div class="card"><div class="ct">Passo 2 — Vincular pedido (opcional)</div>'
+    +'<div style="font-size:10px;color:var(--t2);margin-bottom:10px">Se esta entrada corresponde a um pedido enviado, selecione-o para cruzar as informações.</div>'
+    +'<div class="f" style="margin-bottom:10px"><label>Pedido de compra</label>'
+    +'<select id="conf-ped" onchange="vincularPedConf(this.value)">'
+    +'<option value="">Sem pedido vinculado</option>'+pedOpts+'</select></div>'
+    +'<div id="conf-ped-preview"></div></div>'
+    +'<div class="btns"><button class="btn" onclick="_confStep=0;confRenderNova()">← Voltar</button>'
+    +'<button class="btn p" onclick="confProx()">Próximo →</button></div>';
+}
+
+function confRenderNova(){
+  var el=document.getElementById('conf-nova');
+  if(el)el.innerHTML=rConfNova();
+}
+
+function vincularPedConf(val){
+  _confPedidoIdx=val===''?-1:parseInt(val);
+  var prev=document.getElementById('conf-ped-preview');
+  if(!prev)return;
+  if(_confPedidoIdx<0){prev.innerHTML='';return;}
+  var ped=((curEmpresa&&curEmpresa.pedidos)||[])[_confPedidoIdx];
+  if(!ped){prev.innerHTML='';return;}
+  // Cruzar itens do pedido com itens da conferência
+  _confItens.forEach(function(ci){
+    ped.itens.forEach(function(pi){
+      var prodP=pi.produtoId!==undefined&&pi.produtoId!==''?prods[pi.produtoId]:null;
+      var match=false;
+      if(ci.produtoIdx!==null&&ci.produtoIdx===pi.produtoId)match=true;
+      if(!match&&prodP&&similaridade(ci.descNF,prodP.desc)>=0.7)match=true;
+      if(match){
+        ci.qtdPedida=pi.qtd||0;
+        ci.custoPedido=pi.custoUnitPedido||0;
+        ci.divergenciaQtd=Math.abs(ci.qtdNF-ci.qtdPedida)>0.001;
+        ci.divergenciaPreco=ci.custoPedido>0?Math.abs((ci.custoNF-ci.custoPedido)/ci.custoPedido)>0.02:false;
+      }
+    });
+  });
+  prev.innerHTML='<div style="background:var(--bg3);border-radius:7px;padding:10px;font-size:10px">'
+    +'<span style="color:var(--gold2);font-weight:700">'+esc(ped.numero||'PED')+'</span>'
+    +' vinculado — '+ped.itens.length+' item(ns) no pedido</div>';
+}
+
+function rConfStep2(){
+  var prodOpts='<option value="">Vincular produto...</option>'+prods.map(function(p,pi){
+    return'<option value="'+pi+'">'+esc(p.desc)+'</option>';
+  }).join('');
+  var itensHtml=_confItens.map(function(ci,ii){
+    var divQtd=ci.divergenciaQtd||Math.abs((ci.qtdConferida||0)-(ci.qtdPedida||0))>0.001&&ci.qtdPedida>0;
+    var divPrc=ci.divergenciaPreco||ci.custoPedido>0&&Math.abs((ci.custoConfirmado-ci.custoPedido)/ci.custoPedido)>0.02;
+    var rowBg=divQtd||divPrc?'background:rgba(239,68,68,.05);':'';
+    var prodAtual=ci.produtoIdx!==null?prods[ci.produtoIdx]:null;
+    return'<tr style="'+rowBg+'">'
+      +'<td style="font-weight:600;max-width:140px;font-size:10px">'+esc(ci.descNF||'—')+'</td>'
+      +'<td><span class="tag">'+(ci.ncm||'—')+'</span></td>'
+      // Qtd pedida
+      +'<td style="font-family:var(--mono);text-align:center">'+(ci.qtdPedida||'—')+'</td>'
+      // Qtd NF
+      +'<td style="font-family:var(--mono);text-align:center">'+(ci.qtdNF||0)+'</td>'
+      // Qtd conferida (editável)
+      +'<td><input type="number" value="'+(ci.qtdConferida||ci.qtdNF||0)+'" min="0" step="0.01"'
+      +' style="width:65px;background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:3px 5px;color:var(--text);font-family:var(--mono);font-size:10px"'
+      +' oninput="confItens['+ii+'].qtdConferida=parseFloat(this.value)||0;confRecalc('+ii+')"></td>'
+      // Custo pedido
+      +'<td style="font-family:var(--mono);text-align:right">'+(ci.custoPedido?fR(ci.custoPedido):'—')+'</td>'
+      // Custo NF
+      +'<td style="font-family:var(--mono);text-align:right">'+(ci.custoNF?fR(ci.custoNF):'—')+'</td>'
+      // Custo confirmado (editável)
+      +'<td><input type="number" value="'+(ci.custoConfirmado||ci.custoNF||0)+'" min="0" step="0.01"'
+      +' style="width:80px;background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:3px 5px;color:var(--text);font-family:var(--mono);font-size:10px"'
+      +' oninput="confItens['+ii+'].custoConfirmado=parseFloat(this.value)||0;confRecalc('+ii+')"></td>'
+      // Divergências
+      +'<td style="font-size:10px">'
+      +(divQtd?'<span style="color:var(--danger)">⚠ Qtd</span><br>':'')
+      +(divPrc?'<span style="color:var(--warn)">⚠ Preço</span>':'')
+      +(!divQtd&&!divPrc?'<span style="color:var(--green)">✓</span>':'')
+      +'</td>'
+      // Vincular produto
+      +'<td>'+(prodAtual
+        ?'<span class="badge bgg" style="font-size:9px">'+esc(prodAtual.desc.slice(0,20))+'</span>'
+        +(ci.produtoMatch==='provavel'?'<div style="font-size:8px;color:var(--warn)">Sugerido</div>':'')
+        :'<select style="font-size:9px;background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:3px;max-width:130px;color:var(--text)" data-ii="'+ii+'" onchange="confVincProd(this)">'
+        +prodOpts.replace('value="'+( ci.produtoIdxSugerido!==null?ci.produtoIdxSugerido:'')+'"','value="'+(ci.produtoIdxSugerido!==null?ci.produtoIdxSugerido:'')+'" selected')
+        +'</select>')
+      +'</td>'
+      +((_confTipo==='manual'&&!ci.descNF)
+        ?'<td><button class="btn xs" onclick="addItemConfManual()">+</button></td>':'<td></td>')
+      +'</tr>';
+  }).join('');
+
+  return'<div class="card"><div class="ct">Passo 3 — Conferência item a item</div>'
+    +((_confForn)?'<div style="font-size:10px;color:var(--t2);margin-bottom:8px">Fornecedor: <b style="color:var(--gold2)">'+esc(_confForn.razaoSocial)+'</b>'
+    +(_confNF?' &middot; NF-'+esc(_confNF.numero):'')
+    +' &middot; '+esc(_confData)+'</div>':'')
+    +'<div style="overflow-x:auto"><table>'
+    +'<tr><th>Produto</th><th>NCM</th><th>Qtd Pedida</th><th>Qtd NF</th><th>Qtd Conf.</th><th>Custo Pedido</th><th>Custo NF</th><th>Custo Conf.</th><th>Status</th><th>Produto vinculado</th><th></th></tr>'
+    +itensHtml+'</table></div>'
+    +(_confTipo==='manual'?'<button class="btn xs" onclick="addItemConfManual()" style="margin-top:8px">+ Adicionar item</button>':'')
+    +'</div>'
+    +'<div class="btns"><button class="btn" onclick="_confStep=1;confRenderNova()">← Voltar</button>'
+    +'<button class="btn p" onclick="confProx()">Confirmar →</button></div>';
+}
+
+// expose _confItens globally for inline edits
+Object.defineProperty(window,'confItens',{get:function(){return _confItens;},set:function(v){_confItens=v;}});
+
+function confRecalc(ii){
+  var ci=_confItens[ii];if(!ci)return;
+  ci.divergenciaQtd=ci.qtdPedida>0&&Math.abs(ci.qtdConferida-ci.qtdPedida)>0.001;
+  ci.divergenciaPreco=ci.custoPedido>0&&Math.abs((ci.custoConfirmado-ci.custoPedido)/ci.custoPedido)>0.02;
+}
+
+function confVincProd(sel){
+  var ii=parseInt(sel.getAttribute('data-ii'));
+  var val=sel.value===''?null:parseInt(sel.value);
+  _confItens[ii].produtoIdx=val;
+}
+
+function addItemConfManual(){
+  _confItens.push({descNF:'',ncm:'',cean:'',cprod:'',unidade:'UN',
+    qtdNF:1,qtdPedida:0,qtdConferida:1,
+    custoNF:0,custoPedido:0,custoConfirmado:0,
+    vST:0,vIPI:0,produtoIdx:null,produtoMatch:'novo',
+    divergenciaQtd:false,divergenciaPreco:false,statusItem:'pendente'});
+  var el=document.getElementById('conf-nova');
+  if(el)el.innerHTML=rConfNova();
+}
+
+function rConfStep3(){
+  var diverg=_confItens.filter(function(ci){return ci.divergenciaQtd||ci.divergenciaPreco;}).length;
+  var ok=_confItens.filter(function(ci){return!ci.divergenciaQtd&&!ci.divergenciaPreco;}).length;
+  var totalNF=_confNF?_confNF.totais.vNF:_confItens.reduce(function(a,ci){return a+ci.custoConfirmado*ci.qtdConferida;},0);
+  return'<div class="card"><div class="ct">Passo 4 — Resumo da conferência</div>'
+    +'<div class="g4" style="margin-bottom:12px">'
+    +'<div class="stat"><div class="sv svd">'+_confItens.length+'</div><div class="sl">Total itens</div></div>'
+    +'<div class="stat"><div class="sv svg2">'+ok+'</div><div class="sl">Sem divergência</div></div>'
+    +'<div class="stat"><div class="sv svr">'+diverg+'</div><div class="sl">Com divergência</div></div>'
+    +'<div class="stat"><div class="sv svb">'+fR(totalNF)+'</div><div class="sl">Total conf.</div></div>'
+    +'</div>'
+    +'<div style="overflow-x:auto"><table>'
+    +'<tr><th>Produto</th><th>Qtd conf.</th><th>Custo conf.</th><th>Total</th><th>Status</th></tr>'
+    +_confItens.map(function(ci){
+      var prod=ci.produtoIdx!==null?prods[ci.produtoIdx]:null;
+      var divOk=!ci.divergenciaQtd&&!ci.divergenciaPreco;
+      return'<tr>'
+        +'<td style="font-weight:600;font-size:10px">'+(prod?esc(prod.desc):esc(ci.descNF||'—'))+'</td>'
+        +'<td style="font-family:var(--mono);text-align:center">'+ci.qtdConferida+'</td>'
+        +'<td style="font-family:var(--mono);text-align:right">'+fR(ci.custoConfirmado)+'</td>'
+        +'<td style="font-family:var(--mono);text-align:right">'+fR(ci.custoConfirmado*ci.qtdConferida)+'</td>'
+        +'<td>'+(divOk?'<span class="badge bgg">✓ OK</span>'
+          :'<span class="badge brr">'+(ci.divergenciaQtd?'⚠ Qtd ':'')+(ci.divergenciaPreco?'⚠ Preço':'')+'</span>')+'</td>'
+        +'</tr>';
+    }).join('')+'</table></div>'
+    +(diverg>0?'<div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:7px;padding:10px;margin-top:10px;font-size:10px;color:var(--danger)">'
+    +'<b>'+diverg+' divergência(s) encontrada(s).</b> Você pode confirmar mesmo assim — as divergências serão registradas no histórico.'
+    +'</div>':'')
+    +'</div>'
+    +'<div class="btns">'
+    +'<button class="btn" onclick="_confStep=2;confRenderNova()">← Voltar</button>'
+    +'<button class="btn p" onclick="confirmarConf()">✓ Confirmar entrada e atualizar custos</button>'
+    +'</div>';
+}
+
+async function confirmarConf(){
+  var diverg=_confItens.filter(function(ci){return ci.divergenciaQtd||ci.divergenciaPreco;}).length;
+  var totalNF=_confNF?_confNF.totais.vNF:_confItens.reduce(function(a,ci){return a+ci.custoConfirmado*ci.qtdConferida;},0);
+
+  // Atualizar custos dos produtos vinculados
+  var produtosAtualizados=0;
+  _confItens.forEach(function(ci){
+    if(ci.produtoIdx!==null&&prods[ci.produtoIdx]){
+      var p=prods[ci.produtoIdx];
+      p.custo=ci.custoConfirmado;
+      // Atualizar fornecedor no produto
+      if(_confForn){
+        atualizarFornecedorProd(ci.produtoIdx,_confForn,{
+          chaveNFe:_confNF?_confNF.chaveNFe:'',
+          numero:_confNF?_confNF.numero:'',
+          dataEmissao:_confData,
+          vUnCom:ci.custoConfirmado
+        });
+      }
+      produtosAtualizados++;
+    }
+  });
+  if(produtosAtualizados>0)sv();
+
+  // Atualizar pedido se vinculado
+  if(_confPedidoIdx>=0){
+    var peds=(curEmpresa&&curEmpresa.pedidos)||[];
+    if(peds[_confPedidoIdx]){
+      peds[_confPedidoIdx].status=diverg>0?'divergente':'recebido_xml';
+      peds[_confPedidoIdx].dataEntrada=_confData;
+      await db.collection('empresas').doc(curEmpresaId).update({pedidos:peds});
+    }
+  }
+
+  // Salvar nota fiscal se veio de XML e ainda não salva
+  if(_confNF&&_confNF.chaveNFe){
+    var jaExiste=notasFiscais.find(function(n){return n.chaveNFe===_confNF.chaveNFe;});
+    if(!jaExiste){
+      var nota=Object.assign({},_confNF,{
+        id:gerarId(),status:'importada',
+        fornecedor:_confForn,
+        itens:_confItens.map(function(ci,ii){return{
+          cProd:ci.cprod,cEAN:ci.cean,xProd:ci.descNF,ncm:ci.ncm,
+          unidade:ci.unidade,quantidade:ci.qtdConferida,
+          vUnCom:ci.custoConfirmado,vProd:ci.custoConfirmado*ci.qtdConferida,
+          vIPI:ci.vIPI,vST:ci.vST,produtoId:ci.produtoIdx!==null?'idx:'+ci.produtoIdx:null
+        };}),
+        importadoEm:new Date().toISOString()
+      });
+      notasFiscais.push(nota);
+      svNotasFiscais();
+    }
+  }
+
+  // Salvar conferência
+  var conf={
+    id:gerarId(),
+    tipo:_confTipo,
+    status:diverg>0?'divergente':'conferido',
+    pedidoId:_confPedidoIdx>=0?((curEmpresa&&curEmpresa.pedidos)||[])[_confPedidoIdx]&&((curEmpresa&&curEmpresa.pedidos)||[])[_confPedidoIdx].id:null,
+    notaFiscalChave:_confNF?_confNF.chaveNFe:'',
+    notaFiscalNum:_confNF?_confNF.numero:'',
+    dataConferencia:_confData,
+    fornecedor:_confForn,
+    itens:_confItens.map(function(ci){return Object.assign({},ci);}),
+    totais:{vNF:totalNF,vST:_confNF?_confNF.totais.vST:0,vIPI:_confNF?_confNF.totais.vIPI:0,vFrete:_confNF?_confNF.totais.vFrete:0},
+    observacoes:'',criadoEm:new Date().toISOString(),atualizouCusto:produtosAtualizados>0
+  };
+  conferencias.push(conf);
+  svConferencias();
+
+  toast('Conferência '+(diverg>0?'com divergências':'sem divergências')+' — '+produtosAtualizados+' custo(s) atualizado(s)!');
+  resetConf();
+  confTab=diverg>0?0:1;
+  go('conf');
+}
+
+function abrirConf(btn){
+  var idx=parseInt(btn.getAttribute('data-idx'));
+  var c=conferencias[idx];if(!c)return;
+  var diverg=c.itens.filter(function(ci){return ci.divergenciaQtd||ci.divergenciaPreco;}).length;
+  var ov=document.createElement('div');ov.className='overlay';ov.id='confov';
+  ov.innerHTML='<div class="modal modal-lg">'
+    +'<div class="mt2">Conferência '+(c.notaFiscalNum?'NF-'+esc(c.notaFiscalNum):c.tipo==='manual'?'Manual':'')+'</div>'
+    +'<div class="ms2">'+(c.fornecedor?esc(c.fornecedor.razaoSocial):'—')+' &middot; '+esc(c.dataConferencia||'—')+'</div>'
+    +'<div class="g4" style="margin-bottom:10px">'
+    +pbr('Total',fR(c.totais&&c.totais.vNF||0))
+    +pbr('ST',fR(c.totais&&c.totais.vST||0))
+    +pbr('IPI',fR(c.totais&&c.totais.vIPI||0))
+    +pbr('Divergências',diverg+'')
+    +'</div>'
+    +'<div style="overflow-x:auto"><table>'
+    +'<tr><th>Produto</th><th>Qtd Ped.</th><th>Qtd NF</th><th>Qtd Conf.</th><th>Custo Ped.</th><th>Custo Conf.</th><th>Status</th></tr>'
+    +c.itens.map(function(ci){
+      var prod=ci.produtoIdx!==null?prods[ci.produtoIdx]:null;
+      var divOk=!ci.divergenciaQtd&&!ci.divergenciaPreco;
+      return'<tr>'
+        +'<td style="font-weight:600;font-size:10px">'+(prod?esc(prod.desc):esc(ci.descNF||'—'))+'</td>'
+        +'<td style="font-family:var(--mono);text-align:center">'+(ci.qtdPedida||'—')+'</td>'
+        +'<td style="font-family:var(--mono);text-align:center">'+(ci.qtdNF||0)+'</td>'
+        +'<td style="font-family:var(--mono);text-align:center">'+ci.qtdConferida+'</td>'
+        +'<td style="font-family:var(--mono)">'+(ci.custoPedido?fR(ci.custoPedido):'—')+'</td>'
+        +'<td style="font-family:var(--mono)">'+fR(ci.custoConfirmado)+'</td>'
+        +'<td>'+(divOk?'<span class="badge bgg">✓ OK</span>'
+          :'<span class="badge brr">'+(ci.divergenciaQtd?'Qtd ':'')+(ci.divergenciaPreco?'Preço':'')+'</span>')+'</td>'
+        +'</tr>';
+    }).join('')+'</table></div>'
+    +'<div class="btns"><button class="btn" onclick="this.closest(\'.overlay\').remove()">Fechar</button>'
+    +(c.status!=='conferido'?'<button class="btn p" onclick="this.closest(\'.overlay\').remove();reabrirConf('+idx+')">Retomar conferência</button>':'')
+    +'</div></div>';
+  document.body.appendChild(ov);
+}
+
+function reabrirConf(idx){
+  var c=conferencias[idx];if(!c)return;
+  _confTipo=c.tipo;_confForn=c.fornecedor;_confData=c.dataConferencia;
+  _confItens=c.itens.map(function(ci){return Object.assign({},ci);});
+  _confNF=c.notaFiscalChave?{chaveNFe:c.notaFiscalChave,numero:c.notaFiscalNum}:null;
+  _confPedidoIdx=-1;
+  _confStep=2;
+  conferencias.splice(idx,1);
+  confTab=2;
+  go('conf');
+}
+
+
+var conferencias = [];
+
 
 
 
@@ -789,7 +1300,7 @@ function doLogin(){
 }
 function doLogout(){
   firebase.auth().signOut().then(function(){
-    prods=[];fbase={};params={};fornecedores=[];pedidos=[];notasFiscais=[];
+    prods=[];fbase={};params={};fornecedores=[];pedidos=[];notasFiscais=[];conferencias=[];
     empresas=[];curEmpresa=null;curEmpresaId=null;
   });
 }
@@ -916,6 +1427,7 @@ async function loadEmpresaData(empId){
       fornecedores=d.fornecedores||[];
       pedidos=d.pedidos||[];
       notasFiscais=d.notasFiscais||[];
+      conferencias=d.conferencias||[];
       // Migração automática
       migrarEmpresa(d, empId);
     }
@@ -927,6 +1439,7 @@ function migrarEmpresa(d, empId){
   var precisaMigrar=false;
   // Garantir campo notasFiscais
   if(!d.notasFiscais){updates.notasFiscais=[];precisaMigrar=true;}
+  if(!d.conferencias){updates.conferencias=[];precisaMigrar=true;}
   // Garantir campo fornecedores
   if(!d.fornecedores){
     // Tentar reconstruir fornecedores das notas fiscais
@@ -1061,7 +1574,7 @@ async function trocarEmpresa(empId){
 // ── NAVEGAÇÃO ────────────────────────────────────────────
 function go(p){
   curPage=p;
-  var pages=['dash','xml','prod','forn','pedidos','notas','empresas','preco'];
+  var pages=['dash','xml','prod','forn','pedidos','conf','notas','empresas','preco'];
   document.querySelectorAll('.nb').forEach(function(b,i){b.classList.toggle('on',pages[i]===p);});
   updateEmpresaSelector();
   ren();
@@ -1096,6 +1609,7 @@ function ren(){
   else if(curPage==='forn')el.innerHTML=rForn();
   else if(curPage==='pedidos')el.innerHTML=rPedidos();
   else if(curPage==='empresas')el.innerHTML=rEmpresas();
+  else if(curPage==='conf')el.innerHTML=rConf();
   else if(curPage==='notas')el.innerHTML=rNotas();
   else if(curPage==='preco')el.innerHTML=rPreco();
   else if(curPage==='admin'){
@@ -2479,6 +2993,7 @@ function toast(msg){
   setTimeout(function(){t.style.opacity='0';setTimeout(function(){t.remove();},300);},2800);
 }
 document.addEventListener('click',function(e){if(e.target.classList&&e.target.classList.contains('overlay'))e.target.remove();});
+
 
 
 
