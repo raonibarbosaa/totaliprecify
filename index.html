@@ -805,6 +805,9 @@ function rConfStep2(){
     return'<option value="'+pi+'">'+esc(p.desc)+'</option>';
   }).join('');
 
+  // Pre-processa todos os itens pra garantir que divergenciaQtd/Preco estão atualizados
+  _confItens.forEach(function(ci, ii){ confRecalc(ii); });
+
   // Cabeçalho com progresso
   var totalItens = _confItens.length;
   var itensOk = _confItens.filter(function(ci){return !ci.divergenciaQtd && !ci.divergenciaPreco;}).length;
@@ -818,8 +821,16 @@ function rConfStep2(){
 
   // Layout em cards: cada item vira um card com 3 colunas lado a lado (Pedido/NF | Conferido | Divergência)
   var itensHtml = _confItens.map(function(ci,ii){
-    var divQtd=ci.divergenciaQtd||Math.abs((ci.qtdConferida||0)-(ci.qtdPedida||0))>0.001&&ci.qtdPedida>0;
-    var divPrc=ci.divergenciaPreco||ci.custoPedido>0&&Math.abs((ci.custoConfirmado-ci.custoPedido)/ci.custoPedido)>0.02;
+    // Referência: se tem pedido vinculado, usa o pedido. Senão, usa a NF.
+    var refQtd = ci.qtdPedida > 0 ? ci.qtdPedida : (ci.qtdNF || 0);
+    var refCusto = ci.custoPedido > 0 ? ci.custoPedido : (ci.custoNF || 0);
+    var qtdConfVal = ci.qtdConferida !== undefined && ci.qtdConferida !== null ? ci.qtdConferida : (ci.qtdNF || 0);
+    var custoConfVal = ci.custoConfirmado !== undefined && ci.custoConfirmado !== null ? ci.custoConfirmado : (ci.custoNF || 0);
+    var divQtd = refQtd > 0 && Math.abs((parseFloat(qtdConfVal)||0) - refQtd) > 0.001;
+    var divPrc = refCusto > 0 && Math.abs((parseFloat(custoConfVal)||0) - refCusto) > 0.001;
+    // Sincroniza o estado (caso tela renderizou antes do recalc)
+    ci.divergenciaQtd = divQtd;
+    ci.divergenciaPreco = divPrc;
     var prodAtual=ci.produtoIdx!==null?prods[ci.produtoIdx]:null;
     var statusColor = (divQtd||divPrc) ? 'rgba(239,68,68,.08)' : 'var(--bg3)';
     var statusBorder = (divQtd||divPrc) ? 'rgba(239,68,68,.3)' : 'var(--border)';
@@ -834,33 +845,35 @@ function rConfStep2(){
       +'<div style="font-size:9px;color:var(--t2)">Custo NF: <b style="color:var(--text);font-family:var(--mono)">'+(ci.custoNF?fR(ci.custoNF):'—')+'</b></div>'
       +'</div>';
 
-    // Coluna Conferido (inputs)
+    // Coluna Conferido (inputs) — usa type=text com inputmode=decimal pra NÃO mostrar setinhas
     var colConf = '<div style="background:rgba(201,162,84,.05);border:1px solid rgba(201,162,84,.2);border-radius:5px;padding:8px 10px">'
       +'<div style="font-size:8px;font-weight:700;color:var(--gold2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:5px">Conferido</div>'
-      +'<div style="margin-bottom:5px"><label style="font-size:9px;color:var(--t2);display:block;margin-bottom:2px">Qtd confirmada</label>'
-      +'<input type="number" value="'+(ci.qtdConferida||ci.qtdNF||0)+'" min="0" step="0.01"'
-      +' style="width:100%;background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:4px 6px;color:var(--text);font-family:var(--mono);font-size:11px"'
-      +' oninput="confItens['+ii+'].qtdConferida=parseFloat(this.value)||0;confRecalc('+ii+');confRefreshItem('+ii+')"></div>'
-      +'<div><label style="font-size:9px;color:var(--t2);display:block;margin-bottom:2px">Custo confirmado</label>'
-      +'<input type="number" value="'+(ci.custoConfirmado||ci.custoNF||0)+'" min="0" step="0.01"'
-      +' style="width:100%;background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:4px 6px;color:var(--text);font-family:var(--mono);font-size:11px"'
-      +' oninput="confItens['+ii+'].custoConfirmado=parseFloat(this.value)||0;confRecalc('+ii+');confRefreshItem('+ii+')"></div>'
+      +'<div style="margin-bottom:5px"><label style="font-size:9px;color:var(--t2);display:block;margin-bottom:2px">Qtd confirmada <span style="color:var(--t3);font-weight:400;font-size:8px">(ref: '+(refQtd||'—')+')</span></label>'
+      +'<input type="text" inputmode="decimal" value="'+qtdConfVal+'" autocomplete="off"'
+      +' style="width:100%;background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:6px 8px;color:var(--text);font-family:var(--mono);font-size:12px"'
+      +' onfocus="this.select()"'
+      +' oninput="confItens['+ii+'].qtdConferida=parseFloat(this.value.replace(\',\',\'.\'))||0;confRecalc('+ii+');confRefreshItem('+ii+')"></div>'
+      +'<div><label style="font-size:9px;color:var(--t2);display:block;margin-bottom:2px">Custo confirmado <span style="color:var(--t3);font-weight:400;font-size:8px">(ref: '+(refCusto?fR(refCusto):'—')+')</span></label>'
+      +'<input type="text" inputmode="decimal" value="'+custoConfVal+'" autocomplete="off"'
+      +' style="width:100%;background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:6px 8px;color:var(--text);font-family:var(--mono);font-size:12px"'
+      +' onfocus="this.select()"'
+      +' oninput="confItens['+ii+'].custoConfirmado=parseFloat(this.value.replace(\',\',\'.\'))||0;confRecalc('+ii+');confRefreshItem('+ii+')"></div>'
       +'</div>';
 
     // Coluna Divergência
     var difTxt = '';
     if(divQtd){
-      var dq = (ci.qtdConferida||0) - (ci.qtdPedida||0);
+      var dq = (parseFloat(qtdConfVal)||0) - refQtd;
       difTxt += '<div style="font-size:10px;color:var(--danger);font-weight:700;margin-bottom:3px">⚠ Qtd: '+(dq>0?'+':'')+dq.toFixed(2)+'</div>';
     }
     if(divPrc){
-      var dp = (ci.custoConfirmado||0) - (ci.custoPedido||0);
-      var pct = ci.custoPedido>0 ? ((dp/ci.custoPedido)*100).toFixed(1) : '0';
+      var dp = (parseFloat(custoConfVal)||0) - refCusto;
+      var pct = refCusto>0 ? ((dp/refCusto)*100).toFixed(1) : '0';
       difTxt += '<div style="font-size:10px;color:var(--warn);font-weight:700;margin-bottom:3px">⚠ Custo: '+(dp>0?'+':'')+fR(dp)+' ('+(dp>0?'+':'')+pct+'%)</div>';
     }
     if(!divQtd && !divPrc){
       difTxt = '<div style="font-size:11px;color:var(--green);font-weight:700">✓ Conforme</div>'
-        +'<div style="font-size:9px;color:var(--t3);margin-top:3px">Pedido e entrada batem</div>';
+        +'<div style="font-size:9px;color:var(--t3);margin-top:3px">'+(ci.qtdPedida>0?'Pedido e entrada batem':'Entrada bate com NF')+'</div>';
     }
     var colDiv = '<div style="background:'+((divQtd||divPrc)?'rgba(239,68,68,.05)':'rgba(16,185,129,.05)')+';border:1px solid '+((divQtd||divPrc)?'rgba(239,68,68,.25)':'rgba(16,185,129,.25)')+';border-radius:5px;padding:8px 10px">'
       +'<div style="font-size:8px;font-weight:700;color:var(--t3);letter-spacing:.5px;text-transform:uppercase;margin-bottom:5px">Divergência</div>'
@@ -910,8 +923,15 @@ Object.defineProperty(window,'confItens',{get:function(){return _confItens;},set
 
 function confRecalc(ii){
   var ci=_confItens[ii];if(!ci)return;
-  ci.divergenciaQtd=ci.qtdPedida>0&&Math.abs(ci.qtdConferida-ci.qtdPedida)>0.001;
-  ci.divergenciaPreco=ci.custoPedido>0&&Math.abs((ci.custoConfirmado-ci.custoPedido)/ci.custoPedido)>0.02;
+  // Referência: se tem pedido vinculado (qtdPedida>0), usa o pedido. Senão, usa a NF/valor inicial.
+  var refQtd = ci.qtdPedida > 0 ? ci.qtdPedida : (ci.qtdNF || 0);
+  var refCusto = ci.custoPedido > 0 ? ci.custoPedido : (ci.custoNF || 0);
+  var qtdConf = parseFloat(ci.qtdConferida) || 0;
+  var custoConf = parseFloat(ci.custoConfirmado) || 0;
+  // Divergência de quantidade: qualquer diferença conta (0.001 por segurança de ponto flutuante)
+  ci.divergenciaQtd = refQtd > 0 && Math.abs(qtdConf - refQtd) > 0.001;
+  // Divergência de preço: qualquer diferença de centavo conta
+  ci.divergenciaPreco = refCusto > 0 && Math.abs(custoConf - refCusto) > 0.001;
 }
 
 function confVincProd(sel){
