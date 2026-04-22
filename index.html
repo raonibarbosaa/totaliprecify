@@ -2242,7 +2242,7 @@ var editEmpIdx = -1;
 function rEmpresas(){
   return'<div class="ptab"><button class="ptb on" id="etb0" onclick="stabE(0)">Minhas empresas</button>'
     +'<button class="ptb" id="etb1" onclick="stabE(1)">+ Nova empresa</button>'
-    +'<button class="ptb" id="etb2" onclick="stabE(2)" style="display:none">Parâmetros fiscais</button>'
+    +'<button class="ptb" id="etb2" onclick="stabE(2)">Parâmetros fiscais</button>'
     +(canManageMembers()?'<button class="ptb" id="etb3" onclick="stabE(3)">Membros</button>':'')
     +'</div>'
     +'<div id="el">'+(empresas.length===0?'<div class="empty">Nenhuma empresa cadastrada.</div>'
@@ -2275,14 +2275,16 @@ function rEmpresas(){
 
 function stabE(idx){
   var el=document.getElementById('el'),ef=document.getElementById('ef'),ep=document.getElementById('ep'),em=document.getElementById('em');
-  var tb2=document.getElementById('etb2');
   if(el)el.style.display=idx===0?'block':'none';
   if(ef)ef.style.display=idx===1?'block':'none';
   if(ep)ep.style.display=idx===2?'block':'none';
   if(em)em.style.display=idx===3?'block':'none';
-  if(tb2)tb2.style.display=idx===2?'inline-flex':'none';
   document.querySelectorAll('.ptb').forEach(function(b,i){b.classList.toggle('on',i===idx);});
   if(idx===1&&editEmpIdx<0){document.getElementById('ef').innerHTML=bEmpForm();}
+  if(idx===2 && ep){
+    // Carrega params da empresa ativa ao abrir
+    ep.innerHTML=rParams();
+  }
   if(idx===3 && em){em.innerHTML=rMembros();}
 }
 
@@ -2749,7 +2751,6 @@ function rPedidos(){
   var pedLista=curEmpresa&&curEmpresa.pedidos?curEmpresa.pedidos:[];
   return'<div class="ptab"><button class="ptb on" id="pdtb0" onclick="stabPed(0)">Pedidos</button>'
     +'<button class="ptb" id="pdtb1" onclick="stabPed(1)">+ Novo pedido</button>'
-    +(canEditData()?'<button class="ptb" id="pdtb2" onclick="abrirCadastroRapidoAvulso()" style="border-color:rgba(16,185,129,.4);color:#4ade80">+ Cadastrar produto</button>':'')
     +'</div>'
     +'<div id="pdl">'+(pedLista.length===0?'<div class="empty">Nenhum pedido de compra cadastrado.</div>'
     :'<div class="card"><div style="overflow-x:auto"><table>'
@@ -2764,7 +2765,7 @@ function rPedidos(){
       if(p.statusConferencia==='divergente'){confLabel='Divergente'; confCls='brr'; confIcon='⚠ ';}
       else if(p.statusConferencia==='conforme'){confLabel='Conforme'; confCls='bgg'; confIcon='✓ ';}
       else if(p.status==='recebido_xml'||p.status==='recebido_manual'){confLabel='A conferir'; confCls='byy';}
-      var podeEditar = (p.status==='rascunho'||p.status==='enviado') && canEditData();
+      var podeEditar = canEditData() && (p.status==='rascunho'||p.status==='enviado' || isAdmin());
       return'<tr><td><span class="tag">#'+esc(p.numero||String(i+1))+'</span></td>'
         +'<td style="font-family:var(--sans);font-weight:600">'+(forn?esc(forn.razaoSocial):'—')+'</td>'
         +'<td style="font-family:var(--mono);font-size:9px">'+(p.dataEmissao||'—')+'</td>'
@@ -2812,7 +2813,10 @@ function bPedForm(){
     +'</div></div>'
     +'<div class="card"><div class="ct">Itens do pedido</div>'
     +'<div id="pd_itens"></div>'
-    +'<button class="btn xs" onclick="addItemPedido()" style="margin-top:6px">+ Adicionar item</button>'
+    +'<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">'
+    +'<button class="btn xs" onclick="addItemPedido()">+ Adicionar item</button>'
+    +'<button class="btn xs g" onclick="cadastrarProdutoENoPedido()">+ Cadastrar produto novo</button>'
+    +'</div>'
     +'</div>'
     +'<div class="btns"><button class="btn p" onclick="savePedido()">Salvar pedido</button>'
     +'<button class="btn" onclick="stabPed(0)">Cancelar</button></div>';
@@ -2875,7 +2879,7 @@ function abrirCadastroRapidoProd(itemIdx){
     +'</div>'
     +'<div class="btns">'
     +'<button class="btn p" onclick="salvarCadastroRapidoProd()">'+btnLabel+'</button>'
-    +'<button class="btn" onclick="clsOv(\'crpov\')">Cancelar</button>'
+    +'<button class="btn" onclick="cancelarCadastroRapido()">Cancelar</button>'
     +'</div></div>';
   document.body.appendChild(ov);
   setTimeout(function(){var e=document.getElementById('crp_desc');if(e)e.focus();},100);
@@ -2884,6 +2888,35 @@ function abrirCadastroRapidoProd(itemIdx){
 // Atalho para abrir o modal avulso (a partir do botao da aba Pedidos)
 function abrirCadastroRapidoAvulso(){
   abrirCadastroRapidoProd(-1);
+}
+
+// Cria um item vazio no pedido e abre o modal de cadastro rapido ja vinculado a ele.
+// Ao salvar, o produto eh criado E ja aparece como item do pedido — sem perder o form.
+function cadastrarProdutoENoPedido(){
+  if(!canEditData()){toast('Sem permissão.');return;}
+  itensPedido.push({produtoId:'',descPedido:'',qtd:1,custoUnitPedido:0,ipi:0,frete:0,custoTotal:0});
+  renderItensPedido();
+  var novoItemIdx = itensPedido.length - 1;
+  _crpItemTemporario = true; // remover se cancelar
+  abrirCadastroRapidoProd(novoItemIdx);
+}
+
+var _crpItemTemporario = false;
+
+// Fecha o modal e, se o item foi criado temporariamente (botão "Cadastrar produto novo"),
+// remove ele do pedido para não deixar linha vazia
+function cancelarCadastroRapido(){
+  if(_crpItemTemporario && _crpItemIdx >= 0 && _crpItemIdx < itensPedido.length){
+    var it = itensPedido[_crpItemIdx];
+    // Só remove se realmente estiver vazio (não foi preenchido)
+    if(it && !it.produtoId && !it.descPedido && !it.custoUnitPedido){
+      itensPedido.splice(_crpItemIdx, 1);
+      renderItensPedido();
+    }
+  }
+  _crpItemTemporario = false;
+  _crpItemIdx = -1;
+  clsOv('crpov');
 }
 
 var _crpItemIdx = -1; // -1 = avulso, >=0 = vincula ao item do pedido
@@ -2945,6 +2978,7 @@ function salvarCadastroRapidoProd(){
         ren();
       }
       _crpItemIdx = -1;
+      _crpItemTemporario = false;
     })
     .catch(function(e){toast('Erro: '+e.message);});
 }
@@ -2976,10 +3010,12 @@ function savePedido(){
   var pedExistente = null;
   if(_editPedIdx >= 0 && curEmpresa && curEmpresa.pedidos && curEmpresa.pedidos[_editPedIdx]){
     pedExistente = curEmpresa.pedidos[_editPedIdx];
-    // Bloqueio adicional: não permite editar pedido já conferido
+    // Bloqueio: só admin pode editar pedido já conferido
     if(pedExistente.status==='recebido_xml'||pedExistente.status==='recebido_manual'){
-      toast('Pedido já foi conferido, não pode ser editado.');
-      return;
+      if(!isAdmin()){
+        toast('Pedido já foi conferido. Apenas administradores podem editar.');
+        return;
+      }
     }
   }
   var ped={
@@ -3016,17 +3052,18 @@ function editarPedido(i){
   var ped = (curEmpresa&&curEmpresa.pedidos||[])[i];
   if(!ped)return;
   if(ped.status==='recebido_xml'||ped.status==='recebido_manual'){
-    toast('Pedido já foi conferido, não pode ser editado.');
-    return;
+    if(!isAdmin()){
+      toast('Pedido já foi conferido. Peça a um administrador para editar.');
+      return;
+    }
+    if(!confirm('⚠ Este pedido já foi CONFERIDO.\n\nEditar pode criar inconsistências com a conferência vinculada. Recomenda-se:\n1) Excluir a conferência primeiro\n2) Editar o pedido\n3) Refazer a conferência\n\nDeseja continuar assim mesmo?'))return;
   }
   _editPedIdx = i;
   itensPedido = (ped.itens||[]).map(function(it){return Object.assign({},it);});
-  // Muda aba para formulario e preenche
   stabPed(1);
   setTimeout(function(){
     var el=document.getElementById('pdf2');
     if(el){
-      // re-renderizar formulario com dados do pedido
       el.innerHTML = bPedFormEditing(ped);
       renderItensPedido();
     }
@@ -3047,7 +3084,10 @@ function bPedFormEditing(ped){
     +'</div></div>'
     +'<div class="card"><div class="ct">Itens do pedido</div>'
     +'<div id="pd_itens"></div>'
-    +'<button class="btn xs" onclick="addItemPedido()" style="margin-top:6px">+ Adicionar item</button>'
+    +'<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">'
+    +'<button class="btn xs" onclick="addItemPedido()">+ Adicionar item</button>'
+    +'<button class="btn xs g" onclick="cadastrarProdutoENoPedido()">+ Cadastrar produto novo</button>'
+    +'</div>'
     +'</div>'
     +'<div class="btns"><button class="btn p" onclick="savePedido()">Atualizar pedido</button>'
     +'<button class="btn" onclick="cancelarEdicaoPedido()">Cancelar</button></div>';
@@ -3113,7 +3153,7 @@ function abrirPedido(i){
   var ped=(curEmpresa&&curEmpresa.pedidos||[])[i];if(!ped)return;
   var forn=fornecedores.find(function(f){return f.id===ped.fornecedorId;});
   var total=ped.itens.reduce(function(a,it){return a+(it.custoTotal||0);},0);
-  var podeEditar = (ped.status==='rascunho'||ped.status==='enviado') && canEditData();
+  var podeEditar = canEditData() && (ped.status==='rascunho'||ped.status==='enviado' || isAdmin());
 
   // Banner de conferencia
   var confBanner = '';
