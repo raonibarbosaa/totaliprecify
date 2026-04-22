@@ -1672,7 +1672,14 @@ function myRole(){
   if(isSuperAdmin()) return 'superadmin';
   if(!curEmpresa || !currentUser) return null;
   var membros = curEmpresa.membros || {};
-  return membros[currentUser.uid] || null;
+  var meuPapel = membros[currentUser.uid];
+  if(meuPapel) return meuPapel;
+  // Fallback: se for o criador da empresa, é admin
+  // (cobre empresas antigas que nao tinham campo 'membros' ainda)
+  if(curEmpresa.criadoPor && curEmpresa.criadoPor === currentUser.uid){
+    return 'admin';
+  }
+  return null;
 }
 
 function isAdmin(){ // admin da empresa ATIVA (ou superadmin)
@@ -1686,6 +1693,35 @@ function isEditor(){ // pode editar (inclui admin e superadmin)
 function canManageMembers(){ return isAdmin(); }
 function canEditParams(){ return isAdmin(); }
 function canEditData(){ return isEditor(); }
+
+// ── DIAGNOSTICO DE PERMISSOES ───────────────────────────
+// Chame window.diagPerm() no console pra ver o estado
+window.diagPerm = function(){
+  var d = {
+    currentUser_email: currentUser ? currentUser.email : '(sem user)',
+    currentUser_uid: currentUser ? currentUser.uid : '(sem uid)',
+    SUPERADMIN_EMAILS: SUPERADMIN_EMAILS,
+    isSuperAdmin: isSuperAdmin(),
+    curEmpresa_razaoSocial: curEmpresa ? curEmpresa.razaoSocial : '(sem empresa ativa)',
+    curEmpresa_membros: curEmpresa ? curEmpresa.membros : '(n/a)',
+    curEmpresa_criadoPor: curEmpresa ? curEmpresa.criadoPor : '(n/a)',
+    myRole: myRole(),
+    isAdmin: isAdmin(),
+    isEditor: isEditor(),
+    canManageMembers: canManageMembers(),
+    canEditData: canEditData()
+  };
+  console.log('🔍 Diagnóstico de permissões:', d);
+  alert('Diagnóstico (veja detalhes no console):\n\n'
+    +'Seu email: '+d.currentUser_email+'\n'
+    +'isSuperAdmin: '+d.isSuperAdmin+'\n'
+    +'Empresa ativa: '+d.curEmpresa_razaoSocial+'\n'
+    +'Papel: '+d.myRole+'\n'
+    +'isAdmin: '+d.isAdmin+'\n'
+    +'canEditData: '+d.canEditData
+  );
+  return d;
+};
 
 // ── WHATSAPP ─────────────────────────────────────────────
 function abrirWhatsApp(e){
