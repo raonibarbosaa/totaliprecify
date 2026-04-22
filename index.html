@@ -235,24 +235,55 @@ function calcDRE(p, pv, comP, frtSP, taxP){
   var temST = !!p.temST;
   var pisA=0, cofA=0, credI=0, credP=0, credC=0;
   var icmsNom = temST ? 0 : alqInt;
-  if(regime==='presumido'){ pisA=0.65; cofA=3.00; }
+  var irpjAliq=0, csllAliq=0;
+  if(regime==='presumido'){
+    pisA=0.65; cofA=3.00;
+    irpjAliq = 8*15/100;  // 1,20%
+    csllAliq = 12*9/100;  // 1,08%
+  }
   else if(regime==='real'){ pisA=1.65; cofA=7.60; credI=temST?0:p.custo*(p.alqOrig||0)/100; credP=p.custo*pisA/100; credC=p.custo*cofA/100; }
+  // Parâmetros da empresa
+  var despFixPct = parseFloat(params.despesasFixasPct)||0;
+  var despVarExtraPct = parseFloat(params.despesasVariaveisPct)||0;
   var dasTotal = pv*das/100;
   var icmsD = temST?0:pv*icmsNom/100;
   var pisD = pv*pisA/100;
   var cofD = pv*cofA/100;
   var icmsL = icmsD-credI, pisL = pisD-credP, cofL = cofD-credC;
   var totalImp = regime==='simples'?dasTotal:(icmsL+pisL+cofL);
-  var recLiq = pv-totalImp;
+  var irpjR = regime==='presumido' ? pv*irpjAliq/100 : 0;
+  var csllR = regime==='presumido' ? pv*csllAliq/100 : 0;
+  var fcpPV = (!temST && (regime==='presumido'||regime==='real')) ? (p.alqFCP||0) : 0;
+  var fcpPVval = fcpPV > 0 ? pv*fcpPV/100 : 0;
+  var recLiq = pv-totalImp-fcpPVval-irpjR-csllR;
   var lucroBruto = recLiq-c.ct;
-  var despOp = pv*(comP+frtSP+taxP)/100;
+  var despOp = pv*(comP+frtSP+taxP+despVarExtraPct)/100;
   var lucroOp = lucroBruto-despOp;
+  // IRPJ/CSLL Lucro Real
+  var irpjRealR = 0, csllRealR = 0;
+  if(regime==='real' && lucroOp > 0){
+    irpjRealR = lucroOp * 15 / 100;
+    csllRealR = lucroOp * 9 / 100;
+  }
+  var lucroAposTrib = lucroOp - irpjRealR - csllRealR;
+  // Despesas fixas
+  var despFixR = pv * despFixPct / 100;
+  var lucroLiq = lucroAposTrib - despFixR;
+  // MC
+  var custosVarR = totalImp + fcpPVval + despOp + irpjR + csllR;
+  var mcValor = pv - c.ct - custosVarR;
+  var mcPct = pv > 0 ? (mcValor/pv)*100 : 0;
   var mf = pv>0?((pv-c.ct)/pv*100):0;
   var mkpR = c.ct>0?((pv/c.ct-1)*100):0;
   return {ct:c.ct,pv:pv,das:das,dasTotal:dasTotal,icmsD:icmsD,icmsL:icmsL,
     pisD:pisD,pisL:pisL,cofD:cofD,cofL:cofL,totalImp:totalImp,recLiq:recLiq,
     lucroBruto:lucroBruto,despOp:despOp,lucroOp:lucroOp,mf:mf,mkpR:mkpR,
-    regime:regime,pisA:pisA,cofA:cofA,c:c};
+    regime:regime,pisA:pisA,cofA:cofA,c:c,
+    irpjAliq:irpjAliq,csllAliq:csllAliq,irpjR:irpjR,csllR:csllR,
+    irpjRealR:irpjRealR,csllRealR:csllRealR,lucroAposTrib:lucroAposTrib,
+    despFixPct:despFixPct,despFixR:despFixR,lucroLiq:lucroLiq,
+    mcValor:mcValor,mcPct:mcPct,fcpPVval:fcpPVval,fcpPV:fcpPV,
+    despVarExtraPct:despVarExtraPct};
 }
 
 function calcPVAuto(p, comP, frtSP, taxP, mrgP){
@@ -401,11 +432,18 @@ return '<div style="margin-bottom:18px"><table style="width:100%;border-collapse
 +totRow('= PRECO DE VENDA',fmtR(pv))+dRow('Markup real',fmtP(d.mkpR),false,true)+dRow('Margem real sobre PV',fmtP(d.mf),false,true)
 +secH('Demonstrativo de Resultado (DRE)')+dRow('Receita bruta (100%)',fmtR(pv),true,false)
 +(regime==='simples'?dRow('(-) DAS '+d.das+'%','- '+fmtR(d.dasTotal),false,true):((!p.temST?dRow('(-) ICMS','- '+fmtR(d.icmsL),false,true):'')+dRow('(-) PIS '+d.pisA+'%','- '+fmtR(d.pisL),false,true)+dRow('(-) COFINS '+d.cofA+'%','- '+fmtR(d.cofL),false,true)))
++(regime==='presumido'?dRow('(-) IRPJ ('+d.irpjAliq.toFixed(2)+'% presumido)','- '+fmtR(d.irpjR),false,true)+dRow('(-) CSLL ('+d.csllAliq.toFixed(2)+'% presumido)','- '+fmtR(d.csllR),false,true):'')
++(d.fcpPV>0?dRow('(-) FCP ('+d.fcpPV+'%)','- '+fmtR(d.fcpPVval),false,true):'')
 +'<tr class="no-break" style="background:#F5EDD8"><td style="padding:7px 14px;font-size:10pt;font-weight:700;color:#111;border:1px solid #E5D5A8">= Receita liquida</td><td style="padding:7px 14px;font-size:10pt;font-weight:700;color:#111;text-align:right;font-family:Courier New,monospace;border:1px solid #E5D5A8">'+fmtR(d.recLiq)+' ('+fmtP(d.recLiq/pv*100)+')</td></tr>'
 +dRow('(-) CPV','- '+fmtR(d.ct),false,true)
 +'<tr class="no-break" style="background:#F5EDD8"><td style="padding:7px 14px;font-size:10pt;font-weight:700;color:#111;border:1px solid #E5D5A8">= Lucro bruto</td><td style="padding:7px 14px;font-size:10pt;font-weight:700;color:#111;text-align:right;font-family:Courier New,monospace;border:1px solid #E5D5A8">'+fmtR(d.lucroBruto)+' ('+fmtP(d.lucroBruto/pv*100)+')</td></tr>'
 +dRow('(-) Despesas operacionais','- '+fmtR(d.despOp),false,true)
 +'<tr class="no-break"><td style="padding:10px 14px;font-size:11pt;font-weight:700;background:#1b2f4e;color:#E8B963;letter-spacing:.3px">= LUCRO OPERACIONAL</td><td style="padding:10px 14px;font-size:11pt;font-weight:700;text-align:right;font-family:Courier New,monospace;background:#1b2f4e;color:#4ade80">'+fmtR(d.lucroOp)+' ('+fmtP(d.lucroOp/pv*100)+')</td></tr>'
++(regime==='real' && d.lucroOp>0?dRow('(-) IRPJ (15% sobre lucro, estimativa)','- '+fmtR(d.irpjRealR),false,true)+dRow('(-) CSLL (9% sobre lucro, estimativa)','- '+fmtR(d.csllRealR),false,true)+'<tr class="no-break" style="background:#F5EDD8"><td style="padding:7px 14px;font-size:10pt;font-weight:700;color:#111;border:1px solid #E5D5A8">= Lucro após tributos</td><td style="padding:7px 14px;font-size:10pt;font-weight:700;color:#111;text-align:right;font-family:Courier New,monospace;border:1px solid #E5D5A8">'+fmtR(d.lucroAposTrib)+' ('+fmtP(d.lucroAposTrib/pv*100)+')</td></tr>':'')
++'<tr><td colspan="2" style="background:#f0f4f8;padding:5px 14px;font-size:8.5pt;font-weight:700;color:#444;text-transform:uppercase;letter-spacing:.4px">Margem de Contribuicao</td></tr>'
++dRow('MC em R$',fmtR(d.mcValor),false,true)
++dRow('MC em %',fmtP(d.mcPct),false,true)
++(d.despFixPct>0?dRow('(-) Despesas fixas ('+d.despFixPct+'%)','- '+fmtR(d.despFixR),false,true)+'<tr class="no-break" style="background:#F5EDD8"><td style="padding:8px 14px;font-size:10.5pt;font-weight:700;color:#111;border:1px solid #E5D5A8">= LUCRO LIQUIDO</td><td style="padding:8px 14px;font-size:10.5pt;font-weight:700;color:#111;text-align:right;font-family:Courier New,monospace;border:1px solid #E5D5A8">'+fmtR(d.lucroLiq)+' ('+fmtP(d.lucroLiq/pv*100)+')</td></tr>':'')
 +'</table></div>';
 }).join('<hr style="border:none;border-top:1px dashed #ccc;margin:10px 0">');
 var resumo='<table style="width:100%;border-collapse:collapse">'
@@ -457,10 +495,39 @@ function svConferencias(){
 
 // ── TELA PRINCIPAL ────────────────────────────────────────
 var confTab = 0;
+// filtro da aba conferencia
+var _confFiltro = 'todos'; // 'todos' | 'pendentes' | 'divergentes' | 'ok'
+
 function rConf(){
   var pendentes = conferencias.filter(function(c){return c.status==='pendente'||c.status==='divergente';});
   var conferidas = conferencias.filter(function(c){return c.status==='conferido';});
-  return '<div class="ptab">'
+
+  // Estatisticas globais
+  var totalConf = conferencias.length;
+  var totalItens = conferencias.reduce(function(a,c){return a+(c.itens||[]).length;},0);
+  var totalDivergItens = 0;
+  var valorDivergente = 0;
+  conferencias.forEach(function(c){
+    (c.itens||[]).forEach(function(it){
+      if(it.divergenciaQtd||it.divergenciaPreco){
+        totalDivergItens++;
+        var diffQ = Math.abs((it.qtdConferida||0) - (it.qtdPedida||0));
+        var diffP = Math.abs((it.custoConfirmado||0) - (it.custoPedido||0));
+        valorDivergente += diffP * (it.qtdConferida||0) + diffQ * (it.custoPedido||0);
+      }
+    });
+  });
+  var pctConferido = totalConf > 0 ? Math.round((conferidas.length/totalConf)*100) : 0;
+
+  var statsCard = '<div class="g4" style="margin-bottom:12px">'
+    +'<div class="stat"><div class="sv svd">'+totalConf+'</div><div class="sl">Conferências</div></div>'
+    +'<div class="stat"><div class="sv svg2">'+conferidas.length+'</div><div class="sl">Conferidas ('+pctConferido+'%)</div></div>'
+    +'<div class="stat"><div class="sv svr">'+pendentes.length+'</div><div class="sl">Pendentes</div></div>'
+    +'<div class="stat"><div class="sv svy">'+fR(valorDivergente)+'</div><div class="sl">Valor divergente</div></div>'
+    +'</div>';
+
+  return statsCard
+    +'<div class="ptab">'
     +'<button class="ptb'+(confTab===0?' on':'')+'" onclick="confStab(0)">Pendentes <span class="badge brr" style="margin-left:4px">'+pendentes.length+'</span></button>'
     +'<button class="ptb'+(confTab===1?' on':'')+'" onclick="confStab(1)">Conferidas <span class="badge bgg" style="margin-left:4px">'+conferidas.length+'</span></button>'
     +'<button class="ptb'+(confTab===2?' on':'')+'" onclick="confStab(2)">+ Nova conferência</button>'
@@ -480,16 +547,50 @@ function confStab(idx){
   if(idx===2){resetConf();var el=document.getElementById('conf-nova');if(el)el.innerHTML=rConfNova();}
 }
 
+// aplicar filtro na lista
+function confSetFiltro(f){
+  _confFiltro = f;
+  var pendentes = conferencias.filter(function(c){return c.status==='pendente'||c.status==='divergente';});
+  var conferidas = conferencias.filter(function(c){return c.status==='conferido';});
+  var el1 = document.getElementById('conf-list-pend');
+  var el2 = document.getElementById('conf-list-conf');
+  if(el1) el1.innerHTML = rConfLista(pendentes, true);
+  if(el2) el2.innerHTML = rConfLista(conferidas, false);
+}
+
 function rConfLista(lista, isPend){
-  if(!lista.length) return '<div class="empty">'+(isPend?'Nenhuma conferência pendente.':'Nenhuma conferência realizada.')+'</div>';
-  return'<div class="card"><div style="overflow-x:auto"><table>'
+  // Filtra conforme _confFiltro
+  var listaFiltrada = lista.filter(function(c){
+    if(_confFiltro === 'todos') return true;
+    if(_confFiltro === 'pendentes') return c.status==='pendente';
+    if(_confFiltro === 'divergentes') return c.status==='divergente' || (c.itens||[]).some(function(it){return it.divergenciaQtd||it.divergenciaPreco;});
+    if(_confFiltro === 'ok') return c.status==='conferido' && !(c.itens||[]).some(function(it){return it.divergenciaQtd||it.divergenciaPreco;});
+    return true;
+  });
+
+  // Barra de filtros rapidos
+  var filtros = '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px">'
+    +'<span style="font-size:9px;color:var(--t3);font-weight:700;text-transform:uppercase;letter-spacing:.5px;align-self:center;margin-right:4px">Filtrar:</span>'
+    +['todos','pendentes','divergentes','ok'].map(function(f){
+      var lbl = {todos:'Todos', pendentes:'Pendentes', divergentes:'Divergentes', ok:'OK'}[f];
+      var isActive = _confFiltro === f;
+      return '<button class="btn xs'+(isActive?' p':'')+'" onclick="confSetFiltro(\''+f+'\')">'+lbl+'</button>';
+    }).join('')
+    +'</div>';
+
+  if(!listaFiltrada.length){
+    return filtros + '<div class="empty">'+(isPend?'Nenhuma conferência pendente.':'Nenhuma conferência realizada.')
+      +(_confFiltro!=='todos'?' <span style="color:var(--t3)">(filtro: '+_confFiltro+')</span>':'')+'</div>';
+  }
+
+  return filtros + '<div class="card"><div style="overflow-x:auto"><table>'
     +'<tr><th>NF</th><th>Fornecedor</th><th>Data</th><th>Pedido</th><th>Itens</th><th>Total</th><th>Status</th><th></th></tr>'
-    +lista.map(function(c){
+    +listaFiltrada.map(function(c){
       var realIdx=conferencias.indexOf(c);
       var ped=c.pedidoId?((curEmpresa&&curEmpresa.pedidos)||[]).find(function(p){return p.id===c.pedidoId;}):null;
       var diverg=c.itens.filter(function(it){return it.divergenciaQtd||it.divergenciaPreco;}).length;
-      var stBadge=c.status==='conferido'?'<span class="badge bgg">Conferido</span>'
-        :c.status==='divergente'?'<span class="badge brr">Divergente</span>'
+      var stBadge=c.status==='conferido'?'<span class="badge bgg">✓ Conferido</span>'
+        :c.status==='divergente'?'<span class="badge brr">⚠ Divergente</span>'
         :'<span class="badge byy">Pendente</span>';
       return'<tr>'
         +'<td><span class="tag">'+(c.notaFiscalNum?'NF-'+esc(c.notaFiscalNum):'Manual')+'</span></td>'
@@ -501,7 +602,7 @@ function rConfLista(lista, isPend){
         +'<td>'+stBadge+'</td>'
         +'<td style="display:flex;gap:4px">'
         +'<button class="btn xs p" data-idx="'+realIdx+'" onclick="abrirConf(this)">Ver</button>'
-        +(c.status!=='conferido'?'<button class="btn xs g" data-idx="'+realIdx+'" onclick="reabrirConf('+realIdx+')">Retomar</button>':'')
+        +(c.status!=='conferido' && canEditData()?'<button class="btn xs g" data-idx="'+realIdx+'" onclick="reabrirConf('+realIdx+')">Retomar</button>':'')
         +'</td></tr>';
     }).join('')+'</table></div></div>';
 }
@@ -701,60 +802,105 @@ function rConfStep2(){
   var prodOpts='<option value="">Vincular produto...</option>'+prods.map(function(p,pi){
     return'<option value="'+pi+'">'+esc(p.desc)+'</option>';
   }).join('');
-  var itensHtml=_confItens.map(function(ci,ii){
+
+  // Cabeçalho com progresso
+  var totalItens = _confItens.length;
+  var itensOk = _confItens.filter(function(ci){return !ci.divergenciaQtd && !ci.divergenciaPreco;}).length;
+  var itensDiv = _confItens.filter(function(ci){return ci.divergenciaQtd || ci.divergenciaPreco;}).length;
+  var header = '<div class="g4" style="margin-bottom:12px">'
+    +'<div class="stat"><div class="sv svd">'+totalItens+'</div><div class="sl">Total de itens</div></div>'
+    +'<div class="stat"><div class="sv svg2">'+itensOk+'</div><div class="sl">Conforme</div></div>'
+    +'<div class="stat"><div class="sv svr">'+itensDiv+'</div><div class="sl">Divergentes</div></div>'
+    +'<div class="stat"><div class="sv svy">'+Math.round(totalItens>0?(itensOk/totalItens)*100:0)+'%</div><div class="sl">Progresso</div></div>'
+    +'</div>';
+
+  // Layout em cards: cada item vira um card com 3 colunas lado a lado (Pedido/NF | Conferido | Divergência)
+  var itensHtml = _confItens.map(function(ci,ii){
     var divQtd=ci.divergenciaQtd||Math.abs((ci.qtdConferida||0)-(ci.qtdPedida||0))>0.001&&ci.qtdPedida>0;
     var divPrc=ci.divergenciaPreco||ci.custoPedido>0&&Math.abs((ci.custoConfirmado-ci.custoPedido)/ci.custoPedido)>0.02;
-    var rowBg=divQtd||divPrc?'background:rgba(239,68,68,.05);':'';
     var prodAtual=ci.produtoIdx!==null?prods[ci.produtoIdx]:null;
-    return'<tr style="'+rowBg+'">'
-      +'<td style="font-weight:600;max-width:140px;font-size:10px">'+esc(ci.descNF||'—')+'</td>'
-      +'<td><span class="tag">'+(ci.ncm||'—')+'</span></td>'
-      // Qtd pedida
-      +'<td style="font-family:var(--mono);text-align:center">'+(ci.qtdPedida||'—')+'</td>'
-      // Qtd NF
-      +'<td style="font-family:var(--mono);text-align:center">'+(ci.qtdNF||0)+'</td>'
-      // Qtd conferida (editável)
-      +'<td><input type="number" value="'+(ci.qtdConferida||ci.qtdNF||0)+'" min="0" step="0.01"'
-      +' style="width:65px;background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:3px 5px;color:var(--text);font-family:var(--mono);font-size:10px"'
-      +' oninput="confItens['+ii+'].qtdConferida=parseFloat(this.value)||0;confRecalc('+ii+')"></td>'
-      // Custo pedido
-      +'<td style="font-family:var(--mono);text-align:right">'+(ci.custoPedido?fR(ci.custoPedido):'—')+'</td>'
-      // Custo NF
-      +'<td style="font-family:var(--mono);text-align:right">'+(ci.custoNF?fR(ci.custoNF):'—')+'</td>'
-      // Custo confirmado (editável)
-      +'<td><input type="number" value="'+(ci.custoConfirmado||ci.custoNF||0)+'" min="0" step="0.01"'
-      +' style="width:80px;background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:3px 5px;color:var(--text);font-family:var(--mono);font-size:10px"'
-      +' oninput="confItens['+ii+'].custoConfirmado=parseFloat(this.value)||0;confRecalc('+ii+')"></td>'
-      // Divergências
-      +'<td style="font-size:10px">'
-      +(divQtd?'<span style="color:var(--danger)">⚠ Qtd</span><br>':'')
-      +(divPrc?'<span style="color:var(--warn)">⚠ Preço</span>':'')
-      +(!divQtd&&!divPrc?'<span style="color:var(--green)">✓</span>':'')
-      +'</td>'
-      // Vincular produto
-      +'<td>'+(prodAtual
-        ?'<span class="badge bgg" style="font-size:9px">'+esc(prodAtual.desc.slice(0,20))+'</span>'
-        +(ci.produtoMatch==='provavel'?'<div style="font-size:8px;color:var(--warn)">Sugerido</div>':'')
-        :'<select style="font-size:9px;background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:3px;max-width:130px;color:var(--text)" data-ii="'+ii+'" onchange="confVincProd(this)">'
-        +prodOpts.replace('value="'+( ci.produtoIdxSugerido!==null?ci.produtoIdxSugerido:'')+'"','value="'+(ci.produtoIdxSugerido!==null?ci.produtoIdxSugerido:'')+'" selected')
-        +'</select>')
-      +'</td>'
-      +((_confTipo==='manual'&&!ci.descNF)
-        ?'<td><button class="btn xs" onclick="addItemConfManual()">+</button></td>':'<td></td>')
-      +'</tr>';
+    var statusColor = (divQtd||divPrc) ? 'rgba(239,68,68,.08)' : 'var(--bg3)';
+    var statusBorder = (divQtd||divPrc) ? 'rgba(239,68,68,.3)' : 'var(--border)';
+    var statusIcon = (divQtd||divPrc) ? '<span style="color:var(--danger);font-size:16px">⚠</span>' : '<span style="color:var(--green);font-size:16px">✓</span>';
+
+    // Coluna NF/Pedido
+    var colNF = '<div style="background:var(--bg2);border-radius:5px;padding:8px 10px">'
+      +'<div style="font-size:8px;font-weight:700;color:var(--t3);letter-spacing:.5px;text-transform:uppercase;margin-bottom:5px">NF / Pedido</div>'
+      +'<div style="font-size:9px;color:var(--t2);margin-bottom:3px">Qtd pedida: <b style="color:var(--text);font-family:var(--mono)">'+(ci.qtdPedida||'—')+'</b></div>'
+      +'<div style="font-size:9px;color:var(--t2);margin-bottom:3px">Qtd NF: <b style="color:var(--text);font-family:var(--mono)">'+(ci.qtdNF||0)+'</b></div>'
+      +'<div style="font-size:9px;color:var(--t2);margin-bottom:3px">Custo pedido: <b style="color:var(--text);font-family:var(--mono)">'+(ci.custoPedido?fR(ci.custoPedido):'—')+'</b></div>'
+      +'<div style="font-size:9px;color:var(--t2)">Custo NF: <b style="color:var(--text);font-family:var(--mono)">'+(ci.custoNF?fR(ci.custoNF):'—')+'</b></div>'
+      +'</div>';
+
+    // Coluna Conferido (inputs)
+    var colConf = '<div style="background:rgba(201,162,84,.05);border:1px solid rgba(201,162,84,.2);border-radius:5px;padding:8px 10px">'
+      +'<div style="font-size:8px;font-weight:700;color:var(--gold2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:5px">Conferido</div>'
+      +'<div style="margin-bottom:5px"><label style="font-size:9px;color:var(--t2);display:block;margin-bottom:2px">Qtd confirmada</label>'
+      +'<input type="number" value="'+(ci.qtdConferida||ci.qtdNF||0)+'" min="0" step="0.01"'
+      +' style="width:100%;background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:4px 6px;color:var(--text);font-family:var(--mono);font-size:11px"'
+      +' oninput="confItens['+ii+'].qtdConferida=parseFloat(this.value)||0;confRecalc('+ii+');confRefreshItem('+ii+')"></div>'
+      +'<div><label style="font-size:9px;color:var(--t2);display:block;margin-bottom:2px">Custo confirmado</label>'
+      +'<input type="number" value="'+(ci.custoConfirmado||ci.custoNF||0)+'" min="0" step="0.01"'
+      +' style="width:100%;background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:4px 6px;color:var(--text);font-family:var(--mono);font-size:11px"'
+      +' oninput="confItens['+ii+'].custoConfirmado=parseFloat(this.value)||0;confRecalc('+ii+');confRefreshItem('+ii+')"></div>'
+      +'</div>';
+
+    // Coluna Divergência
+    var difTxt = '';
+    if(divQtd){
+      var dq = (ci.qtdConferida||0) - (ci.qtdPedida||0);
+      difTxt += '<div style="font-size:10px;color:var(--danger);font-weight:700;margin-bottom:3px">⚠ Qtd: '+(dq>0?'+':'')+dq.toFixed(2)+'</div>';
+    }
+    if(divPrc){
+      var dp = (ci.custoConfirmado||0) - (ci.custoPedido||0);
+      var pct = ci.custoPedido>0 ? ((dp/ci.custoPedido)*100).toFixed(1) : '0';
+      difTxt += '<div style="font-size:10px;color:var(--warn);font-weight:700;margin-bottom:3px">⚠ Custo: '+(dp>0?'+':'')+fR(dp)+' ('+(dp>0?'+':'')+pct+'%)</div>';
+    }
+    if(!divQtd && !divPrc){
+      difTxt = '<div style="font-size:11px;color:var(--green);font-weight:700">✓ Conforme</div>'
+        +'<div style="font-size:9px;color:var(--t3);margin-top:3px">Pedido e entrada batem</div>';
+    }
+    var colDiv = '<div style="background:'+((divQtd||divPrc)?'rgba(239,68,68,.05)':'rgba(16,185,129,.05)')+';border:1px solid '+((divQtd||divPrc)?'rgba(239,68,68,.25)':'rgba(16,185,129,.25)')+';border-radius:5px;padding:8px 10px">'
+      +'<div style="font-size:8px;font-weight:700;color:var(--t3);letter-spacing:.5px;text-transform:uppercase;margin-bottom:5px">Divergência</div>'
+      +difTxt
+      +'</div>';
+
+    return '<div id="conf-item-'+ii+'" style="background:'+statusColor+';border:1px solid '+statusBorder+';border-radius:8px;padding:12px;margin-bottom:8px">'
+      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px dashed var(--border)">'
+      +statusIcon
+      +'<div style="flex:1"><div style="font-size:11px;font-weight:700">'+esc(ci.descNF||'(sem descrição)')+'</div>'
+      +'<div style="font-size:9px;color:var(--t3)">NCM: '+(ci.ncm||'—')+(ci.cean?' · EAN '+esc(ci.cean):'')+'</div></div>'
+      +'<div style="font-size:10px">'+(prodAtual
+        ?'<span class="badge bgg">Vinculado: '+esc(prodAtual.desc.slice(0,25))+'</span>'
+        :'<select style="font-size:10px;background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:4px 6px;max-width:180px;color:var(--text)" data-ii="'+ii+'" onchange="confVincProd(this)">'
+        +prodOpts.replace('value="'+(ci.produtoIdxSugerido!==null?ci.produtoIdxSugerido:'')+'"','value="'+(ci.produtoIdxSugerido!==null?ci.produtoIdxSugerido:'')+'" selected')
+        +'</select>')+'</div>'
+      +'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'
+      +colNF+colConf+colDiv
+      +'</div>'
+      +'</div>';
   }).join('');
 
   return'<div class="card"><div class="ct">Passo 3 — Conferência item a item</div>'
     +((_confForn)?'<div style="font-size:10px;color:var(--t2);margin-bottom:8px">Fornecedor: <b style="color:var(--gold2)">'+esc(_confForn.razaoSocial)+'</b>'
     +(_confNF?' &middot; NF-'+esc(_confNF.numero):'')
     +' &middot; '+esc(_confData)+'</div>':'')
-    +'<div style="overflow-x:auto"><table>'
-    +'<tr><th>Produto</th><th>NCM</th><th>Qtd Pedida</th><th>Qtd NF</th><th>Qtd Conf.</th><th>Custo Pedido</th><th>Custo NF</th><th>Custo Conf.</th><th>Status</th><th>Produto vinculado</th><th></th></tr>'
-    +itensHtml+'</table></div>'
-    +(_confTipo==='manual'?'<button class="btn xs" onclick="addItemConfManual()" style="margin-top:8px">+ Adicionar item</button>':'')
+    +header
+    +itensHtml
+    +(_confTipo==='manual'?'<button class="btn xs" onclick="addItemConfManual()" style="margin-top:4px">+ Adicionar item</button>':'')
     +'</div>'
     +'<div class="btns"><button class="btn" onclick="_confStep=1;confRenderNova()">← Voltar</button>'
     +'<button class="btn p" onclick="confProx()">Confirmar →</button></div>';
+}
+
+// atualiza apenas 1 item apos edicao (evita re-render da pagina inteira)
+function confRefreshItem(ii){
+  var container = document.getElementById('conf-item-'+ii);
+  if(!container) return;
+  // Re-renderiza a pagina inteira — eh mais simples e garante sincronismo com as stats do topo
+  var el = document.getElementById('conf-nova');
+  if(el) el.innerHTML = rConfNova();
 }
 
 // expose _confItens globally for inline edits
@@ -2372,6 +2518,20 @@ function rParams(){
     +'<div class="card"><div class="ct">ICMS padrão</div>'
     +'<div class="g2"><div class="f"><label>Alíquota interna padrão (%) '+tip('icms_p','ICMS interno padrão','Alíquota padrão de ICMS aplicada nas vendas internas no seu estado. Pode ser sobrescrita por produto.','Definida pela legislação estadual (RICMS).','19% em SE, 18% em SP, 17% em MG.')+'</label>'
     +'<input type="number" id="pd_icms" value="'+(params.alqInt||'')+'" placeholder="ex: 19" step="0.01" oninput="params.alqInt=this.value"></div></div></div>'
+    +'<div class="card"><div class="ct">Estrutura de custos fixos</div>'
+    +'<div style="background:rgba(201,162,84,.05);border:1px solid rgba(201,162,84,.2);border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:10px;color:var(--t2);line-height:1.5">'
+    +'<b style="color:var(--gold2)">Como funciona:</b> Informe o percentual das suas despesas fixas e variáveis sobre o faturamento. Essas informações alimentam o cálculo de <b>Margem de Contribuição</b> e o <b>DRE com lucro líquido</b> em todos os métodos de precificação.'
+    +'<br><br><b style="color:var(--gold2)">Como calcular o % fixas:</b> Some suas despesas fixas mensais (aluguel, folha, contador, software, energia, etc.) e divida pelo faturamento mensal médio. Ex: R$ 15.000 fixas / R$ 100.000 faturamento = 15%.'
+    +'</div>'
+    +'<div class="g3f">'
+    +'<div class="f"><label>Despesas fixas (%) '+tip('desp_fix','Despesas fixas','Percentual das despesas fixas mensais sobre o faturamento bruto. Aluguel, folha, contador, software, energia, internet, etc.','Some todas as despesas fixas mensais e divida pelo faturamento bruto mensal médio.','R$ 15.000 de fixas / R$ 100.000 de faturamento = 15%.')+'</label>'
+    +'<input type="number" id="pd_despfix" value="'+(params.despesasFixasPct||'')+'" placeholder="ex: 15" step="0.01" oninput="params.despesasFixasPct=this.value"></div>'
+    +'<div class="f"><label>Outras despesas variáveis (%) '+tip('desp_var','Outras despesas variáveis','Despesas variáveis EXTRAS que não são comissão, frete de saída nem taxas de cartão (que já estão na formação de preço). Ex: royalties, comissões de marketplace fixas, embalagens especiais.','Faturamento mensal vs. total dessas despesas variáveis não cobertas em outros campos.','Opcional. Deixe 0% se não houver.')+'</label>'
+    +'<input type="number" id="pd_despvar" value="'+(params.despesasVariaveisPct||'')+'" placeholder="0" step="0.01" oninput="params.despesasVariaveisPct=this.value"></div>'
+    +'<div class="f"><label>Faturamento mensal médio (R$) '+tip('fat_mes','Faturamento mensal médio','Usado para calcular o ponto de equilíbrio (quanto precisa vender para não dar prejuízo). Opcional — se vazio, o PE é em % apenas.','Média dos últimos 3-12 meses de receita bruta.','R$ 100.000.')+'</label>'
+    +'<input type="number" id="pd_fatmes" value="'+(params.faturamentoMensal||'')+'" placeholder="ex: 100000" step="100" oninput="params.faturamentoMensal=this.value"></div>'
+    +'</div>'
+    +'</div>'
     +'<div class="btns"><button class="btn p" onclick="saveParams()">Salvar parâmetros</button></div>';
 }
 function selRegimeP(r){params.regime=r;var ep=document.getElementById('ep');if(ep)ep.innerHTML=rParams();}
@@ -2387,6 +2547,13 @@ function saveParams(){
   }
   var ic=document.getElementById('pd_icms');
   if(ic)params.alqInt=parseFloat(ic.value)||0;
+  // Despesas fixas e variaveis
+  var df=document.getElementById('pd_despfix');
+  if(df)params.despesasFixasPct=parseFloat(df.value)||0;
+  var dv=document.getElementById('pd_despvar');
+  if(dv)params.despesasVariaveisPct=parseFloat(dv.value)||0;
+  var fm=document.getElementById('pd_fatmes');
+  if(fm)params.faturamentoMensal=parseFloat(fm.value)||0;
   svParams();toast('Parâmetros salvos!');ren();
 }
 
@@ -2473,21 +2640,30 @@ function rPedidos(){
     +'<button class="ptb" id="pdtb1" onclick="stabPed(1)">+ Novo pedido</button></div>'
     +'<div id="pdl">'+(pedLista.length===0?'<div class="empty">Nenhum pedido de compra cadastrado.</div>'
     :'<div class="card"><div style="overflow-x:auto"><table>'
-    +'<tr><th>Nº</th><th>Fornecedor</th><th>Data</th><th>Itens</th><th>Valor total</th><th>Status</th><th></th></tr>'
+    +'<tr><th>Nº</th><th>Fornecedor</th><th>Data</th><th>Itens</th><th>Valor total</th><th>Status</th><th>Conferência</th><th></th></tr>'
     +pedLista.map(function(p,i){
       var forn=fornecedores.find(function(f){return f.id===p.fornecedorId;});
       var total=(p.itens||[]).reduce(function(a,it){return a+(it.custoTotal||0);},0);
-      var stLabel={rascunho:'Rascunho',enviado:'Enviado',recebido_xml:'Recebido (XML)',recebido_manual:'Recebido (Manual)',divergente:'Divergente'}[p.status]||p.status;
-      var stCls={rascunho:'byy',enviado:'bbl',recebido_xml:'bgg',recebido_manual:'bgg',divergente:'brr'}[p.status]||'byy';
+      var stLabel={rascunho:'Rascunho',enviado:'Enviado',recebido_xml:'Recebido (XML)',recebido_manual:'Recebido (Manual)'}[p.status]||p.status;
+      var stCls={rascunho:'byy',enviado:'bbl',recebido_xml:'bgg',recebido_manual:'bgg'}[p.status]||'byy';
+      // Badge de conferência (divergente/conforme/sem)
+      var confLabel='Sem conferência', confCls='', confIcon='';
+      if(p.statusConferencia==='divergente'){confLabel='Divergente'; confCls='brr'; confIcon='⚠ ';}
+      else if(p.statusConferencia==='conforme'){confLabel='Conforme'; confCls='bgg'; confIcon='✓ ';}
+      else if(p.status==='recebido_xml'||p.status==='recebido_manual'){confLabel='A conferir'; confCls='byy';}
+      var podeEditar = (p.status==='rascunho'||p.status==='enviado') && canEditData();
       return'<tr><td><span class="tag">#'+esc(p.numero||String(i+1))+'</span></td>'
         +'<td style="font-family:var(--sans);font-weight:600">'+(forn?esc(forn.razaoSocial):'—')+'</td>'
         +'<td style="font-family:var(--mono);font-size:9px">'+(p.dataEmissao||'—')+'</td>'
         +'<td style="text-align:center">'+(p.itens||[]).length+'</td>'
         +'<td>'+fR(total)+'</td>'
         +'<td><span class="badge '+stCls+'">'+stLabel+'</span></td>'
-        +'<td style="display:flex;gap:4px">'
+        +'<td>'+(confCls?'<span class="badge '+confCls+'">'+confIcon+confLabel+'</span>':'<span style="font-size:9px;color:var(--t3)">—</span>')+'</td>'
+        +'<td style="display:flex;gap:4px;flex-wrap:wrap">'
         +'<button class="btn xs p" onclick="abrirPedido('+i+')">Abrir</button>'
-        +(p.status==='enviado'?'<button class="btn xs" onclick="registrarEntrada('+i+')">Entrada</button>':'')
+        +(podeEditar?'<button class="btn xs" onclick="editarPedido('+i+')">Editar</button>':'')
+        +(p.status==='enviado'?'<button class="btn xs g" onclick="registrarEntrada('+i+')">Entrada</button>':'')
+        +(p.statusConferencia==='divergente'?'<button class="btn xs" onclick="verJustificativa('+i+')" title="Ver justificativa">Justif.</button>':'')
         +'</td></tr>';
     }).join('')+'</table></div></div>')+'</div>'
     +'<div id="pdf2" style="display:none">'+bPedForm()+'</div>';
@@ -2497,6 +2673,18 @@ function stabPed(idx){
   if(pdl)pdl.style.display=idx===0?'block':'none';
   if(pdf2)pdf2.style.display=idx===1?'block':'none';
   document.querySelectorAll('.ptb').forEach(function(b,i){b.classList.toggle('on',i===idx);});
+  // Se clicou "+ Novo pedido" estando em edicao, reseta
+  if(idx===1 && _editPedIdx >= 0 && pdf2){
+    // a edicao eh tratada em editarPedido() que preenche o form manualmente
+    // entao nada a fazer aqui
+  }
+  if(idx===0){
+    // ao voltar para lista, se nao esta em edicao, garante que form proximo abre limpo
+    if(_editPedIdx < 0 && pdf2){
+      pdf2.innerHTML = bPedForm();
+      itensPedido = [];
+    }
+  }
 }
 function bPedForm(){
   var fornOpts=fornecedores.map(function(f){return'<option value="'+f.id+'">'+esc(f.razaoSocial)+' ('+fCNPJ(f.cnpj)+')</option>';}).join('');
@@ -2523,20 +2711,110 @@ function addItemPedido(){
 function renderItensPedido(){
   var el=document.getElementById('pd_itens');if(!el)return;
   el.innerHTML=itensPedido.map(function(it,i){
-    var prodOpts=prods.map(function(p,pi){return'<option value="'+pi+'"'+(it.produtoId===pi?' selected':'')+'>'+esc(p.desc)+'</option>';}).join('');
+    var prodOpts=prods.map(function(p,pi){return'<option value="'+pi+'"'+(it.produtoId===pi?' selected':'')+'>'+esc(p.desc)+(p.cadastroIncompleto?' ⚠':'')+'</option>';}).join('');
+    var semProduto = (it.produtoId === '' || it.produtoId === null || it.produtoId === undefined);
     return'<div style="background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:10px;margin-bottom:6px">'
       +'<div class="g3f" style="margin-bottom:6px">'
-      +'<div class="f sp2"><label>Produto</label><select onchange="selProdPed('+i+',this.value)"><option value="">Selecione ou descreva abaixo...</option>'+prodOpts+'</select></div>'
-      +'<div class="f sp2"><label>Descrição no pedido</label><input value="'+esc(it.descPedido||'')+'" oninput="itensPedido['+i+'].descPedido=this.value" placeholder="Descrição do item"></div>'
+      +'<div class="f sp2"><label>Produto</label><select onchange="selProdPed('+i+',this.value)"><option value="">Selecione ou cadastre...</option>'+prodOpts+'</select></div>'
+      +'<div class="f sp2"><label>Descrição no pedido</label>'
+      +'<div style="display:flex;gap:4px"><input value="'+esc(it.descPedido||'')+'" oninput="itensPedido['+i+'].descPedido=this.value" placeholder="Descrição do item" style="flex:1">'
+      +(semProduto?'<button class="btn g xs" onclick="abrirCadastroRapidoProd('+i+')" title="Cadastrar este item como produto novo">+ Cadastrar</button>':'')
+      +'</div></div>'
       +'<div class="f"><label>Qtd</label><input type="number" value="'+(it.qtd||1)+'" oninput="itensPedido['+i+'].qtd=parseFloat(this.value)||1;calcItemPed('+i+')" min="0.01" step="0.01"></div>'
       +'<div class="f"><label>Custo unit. (R$)</label><input type="number" value="'+(it.custoUnitPedido||'')+'" oninput="itensPedido['+i+'].custoUnitPedido=parseFloat(this.value)||0;calcItemPed('+i+')" placeholder="0,00"></div>'
       +'<div class="f"><label>IPI (%)</label><input type="number" value="'+(it.ipi||0)+'" oninput="itensPedido['+i+'].ipi=parseFloat(this.value)||0;calcItemPed('+i+')" placeholder="0"></div>'
       +'</div>'
       +'<div style="display:flex;justify-content:space-between;align-items:center">'
-      +'<div style="font-size:10px;color:var(--t2)">Custo total: <span style="font-family:var(--mono);color:var(--gold2);font-weight:700" id="it_tot_'+i+'">'+fR(it.custoTotal||0)+'</span></div>'
+      +'<div style="font-size:10px;color:var(--t2)">Custo total: <span style="font-family:var(--mono);color:var(--gold2);font-weight:700" id="it_tot_'+i+'">'+fR(it.custoTotal||0)+'</span>'
+      +(it.produtoId!==undefined && it.produtoId!=='' && prods[it.produtoId] && prods[it.produtoId].cadastroIncompleto?' <span class="badge byy" style="margin-left:8px">⚠ Cadastro incompleto</span>':'')
+      +'</div>'
       +'<button class="btn xs d" onclick="delItemPed('+i+')">&times; Remover</button>'
       +'</div></div>';
   }).join('');
+}
+
+// ── CADASTRO RÁPIDO DE PRODUTO (do pedido) ──────────────
+function abrirCadastroRapidoProd(itemIdx){
+  if(!canEditData()){toast('Sem permissão.');return;}
+  var it = itensPedido[itemIdx] || {};
+  var ov=document.createElement('div');ov.className='overlay';ov.id='crpov';
+  ov.innerHTML='<div class="modal">'
+    +'<div class="mt2">Cadastrar produto rápido</div>'
+    +'<div class="ms2">Preencha o essencial — você pode completar depois em Produtos.</div>'
+    +'<div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25);border-radius:6px;padding:8px 11px;font-size:10px;color:var(--t2);margin-bottom:10px;line-height:1.5">'
+    +'O produto será salvo como <b style="color:var(--warn)">Cadastro incompleto</b>. Você precisa ir em <b>Produtos</b> depois e preencher ST, antecipação, FCP, concorrentes e fornecedores.'
+    +'</div>'
+    +'<div class="g2" style="margin-bottom:10px">'
+    +'<div class="f sp2"><label>Descrição *</label><input id="crp_desc" value="'+esc(it.descPedido||'')+'" placeholder="Nome completo do produto"></div>'
+    +'<div class="f"><label>NCM</label><input id="crp_ncm" placeholder="0000.00.00"></div>'
+    +'<div class="f"><label>Código interno</label><input id="crp_ci" placeholder="Opcional"></div>'
+    +'<div class="f"><label>Custo unitário (R$) *</label><input type="number" id="crp_custo" value="'+(it.custoUnitPedido||'')+'" placeholder="0,00" step="0.01"></div>'
+    +'<div class="f"><label>IPI (%)</label><input type="number" id="crp_ipi" value="'+(it.ipi||0)+'" placeholder="0" step="0.01"></div>'
+    +'<div class="f"><label>Aliq. interna ICMS (%)</label><input type="number" id="crp_ai" placeholder="'+(params.alqInt||'19')+'" step="0.01"></div>'
+    +'<div class="f"><label>Aliq. origem ICMS (%)</label><input type="number" id="crp_ao" placeholder="7" step="0.01"></div>'
+    +'</div>'
+    +'<div class="btns">'
+    +'<button class="btn p" onclick="salvarCadastroRapidoProd('+itemIdx+')">Salvar produto e vincular</button>'
+    +'<button class="btn" onclick="clsOv(\'crpov\')">Cancelar</button>'
+    +'</div></div>';
+  document.body.appendChild(ov);
+  setTimeout(function(){var e=document.getElementById('crp_desc');if(e)e.focus();},100);
+}
+
+function salvarCadastroRapidoProd(itemIdx){
+  if(!canEditData()){toast('Sem permissão.');return;}
+  var desc = (document.getElementById('crp_desc').value||'').trim();
+  var custo = parseFloat(document.getElementById('crp_custo').value)||0;
+  if(!desc){toast('Informe a descrição.');return;}
+  if(custo <= 0){toast('Informe o custo unitário.');return;}
+  var ncm = document.getElementById('crp_ncm').value||'';
+  var ci = document.getElementById('crp_ci').value||'';
+  var ipi = parseFloat(document.getElementById('crp_ipi').value)||0;
+  var ai = parseFloat(document.getElementById('crp_ai').value)||parseFloat(params.alqInt)||0;
+  var ao = parseFloat(document.getElementById('crp_ao').value)||0;
+  var novo = {
+    desc: desc,
+    ncm: ncm,
+    cest: '',
+    codigoInt: ci,
+    custo: custo,
+    ipi: ipi,
+    freteEntrada: 0,
+    alqInt: ai,
+    alqOrig: ao,
+    temST: false,
+    stEf: 0,
+    tipoProd: 'tributado',
+    temAntec: false,
+    alqAntec: 0,
+    alqFCP: 0,
+    fornecedoresProd: [],
+    concorrentes: [],
+    precoVenda: null,
+    margemReal: null,
+    metodo: null,
+    cadastroIncompleto: true,
+    criadoEm: new Date().toISOString(),
+    criadoVia: 'pedido-rapido'
+  };
+  prods.push(novo);
+  var novoIdx = prods.length - 1;
+  // Vincula o item do pedido ao produto recém-criado
+  if(itensPedido[itemIdx]){
+    itensPedido[itemIdx].produtoId = novoIdx;
+    itensPedido[itemIdx].descPedido = desc;
+    itensPedido[itemIdx].custoUnitPedido = custo;
+    itensPedido[itemIdx].ipi = ipi;
+    calcItemPed(itemIdx);
+  }
+  // Salva em Firestore
+  db.collection('empresas').doc(curEmpresaId).update({prods:prods})
+    .then(function(){
+      clsOv('crpov');
+      renderItensPedido();
+      toast('Produto cadastrado e vinculado!');
+    })
+    .catch(function(e){toast('Erro: '+e.message);});
 }
 function selProdPed(i,pi){
   if(pi==='')return;
@@ -2555,34 +2833,157 @@ function calcItemPed(i){
   if(el)el.textContent=fR(it.custoTotal);
 }
 function delItemPed(i){itensPedido.splice(i,1);renderItensPedido();}
+var _editPedIdx = -1; // indice do pedido em edicao (-1 = novo)
+
 function savePedido(){
+  if(!canEditData()){toast('Sem permissão.');return;}
   var fornId=document.getElementById('pd_forn').value;
   if(!fornId){toast('Selecione o fornecedor.');return;}
   if(!itensPedido.length){toast('Adicione pelo menos um item.');return;}
+  // Se estiver editando, preserva id e campos originais
+  var pedExistente = null;
+  if(_editPedIdx >= 0 && curEmpresa && curEmpresa.pedidos && curEmpresa.pedidos[_editPedIdx]){
+    pedExistente = curEmpresa.pedidos[_editPedIdx];
+    // Bloqueio adicional: não permite editar pedido já conferido
+    if(pedExistente.status==='recebido_xml'||pedExistente.status==='recebido_manual'){
+      toast('Pedido já foi conferido, não pode ser editado.');
+      return;
+    }
+  }
   var ped={
-    id:gerarId(),
-    numero:document.getElementById('pd_num').value||('PED-'+(((curEmpresa&&curEmpresa.pedidos)||[]).length+1)),
+    id: pedExistente ? pedExistente.id : gerarId(),
+    numero:document.getElementById('pd_num').value||(pedExistente?pedExistente.numero:('PED-'+(((curEmpresa&&curEmpresa.pedidos)||[]).length+1))),
     fornecedorId:fornId,
-    dataEmissao:document.getElementById('pd_data').value||new Date().toISOString().slice(0,10),
+    dataEmissao:document.getElementById('pd_data').value||(pedExistente?pedExistente.dataEmissao:new Date().toISOString().slice(0,10)),
     dataPrevisao:document.getElementById('pd_prev').value,
     observacoes:document.getElementById('pd_obs').value,
     itens:itensPedido.slice(),
-    status:'rascunho',
-    criadoEm:new Date().toISOString()
+    status: pedExistente ? pedExistente.status : 'rascunho',
+    criadoEm: pedExistente ? pedExistente.criadoEm : new Date().toISOString(),
+    editadoEm: pedExistente ? new Date().toISOString() : undefined,
+    editadoPor: pedExistente && currentUser ? currentUser.uid : undefined
   };
   if(!curEmpresa.pedidos)curEmpresa.pedidos=[];
-  curEmpresa.pedidos.push(ped);
+  if(_editPedIdx >= 0){
+    curEmpresa.pedidos[_editPedIdx] = ped;
+  } else {
+    curEmpresa.pedidos.push(ped);
+  }
+  var wasEditing = _editPedIdx >= 0;
   db.collection('empresas').doc(curEmpresaId).update({pedidos:curEmpresa.pedidos})
-    .then(function(){itensPedido=[];stabPed(0);ren();toast('Pedido salvo!');})
+    .then(function(){
+      itensPedido=[]; _editPedIdx = -1;
+      stabPed(0); ren();
+      toast(wasEditing?'Pedido atualizado!':'Pedido salvo!');
+    })
     .catch(function(e){toast('Erro: '+e.message);});
+}
+
+function editarPedido(i){
+  if(!canEditData()){toast('Sem permissão.');return;}
+  var ped = (curEmpresa&&curEmpresa.pedidos||[])[i];
+  if(!ped)return;
+  if(ped.status==='recebido_xml'||ped.status==='recebido_manual'){
+    toast('Pedido já foi conferido, não pode ser editado.');
+    return;
+  }
+  _editPedIdx = i;
+  itensPedido = (ped.itens||[]).map(function(it){return Object.assign({},it);});
+  // Muda aba para formulario e preenche
+  stabPed(1);
+  setTimeout(function(){
+    var el=document.getElementById('pdf2');
+    if(el){
+      // re-renderizar formulario com dados do pedido
+      el.innerHTML = bPedFormEditing(ped);
+      renderItensPedido();
+    }
+  }, 60);
+}
+
+// Variante do bPedForm pre-populada (para edicao)
+function bPedFormEditing(ped){
+  var fornOpts=fornecedores.map(function(f){return'<option value="'+f.id+'"'+(f.id===ped.fornecedorId?' selected':'')+'>'+esc(f.razaoSocial)+' ('+fCNPJ(f.cnpj)+')</option>';}).join('');
+  return'<div class="card"><div class="ct">Editar pedido '+esc(ped.numero||'')+'</div>'
+    +'<div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:6px;padding:7px 11px;font-size:10px;color:var(--warn);margin-bottom:10px">⚠ Você está editando um pedido já salvo. As alterações serão gravadas ao clicar em Atualizar.</div>'
+    +'<div class="g2" style="margin-bottom:10px">'
+    +'<div class="f"><label>Número do pedido</label><input id="pd_num" value="'+esc(ped.numero||'')+'"></div>'
+    +'<div class="f"><label>Fornecedor *</label><select id="pd_forn"><option value="">Selecione...</option>'+fornOpts+'</select></div>'
+    +'<div class="f"><label>Data do pedido</label><input type="date" id="pd_data" value="'+(ped.dataEmissao||'')+'"></div>'
+    +'<div class="f"><label>Previsão de entrega</label><input type="date" id="pd_prev" value="'+(ped.dataPrevisao||'')+'"></div>'
+    +'<div class="f sp2"><label>Observações</label><input id="pd_obs" value="'+esc(ped.observacoes||'')+'" placeholder="Observações do pedido"></div>'
+    +'</div></div>'
+    +'<div class="card"><div class="ct">Itens do pedido</div>'
+    +'<div id="pd_itens"></div>'
+    +'<button class="btn xs" onclick="addItemPedido()" style="margin-top:6px">+ Adicionar item</button>'
+    +'</div>'
+    +'<div class="btns"><button class="btn p" onclick="savePedido()">Atualizar pedido</button>'
+    +'<button class="btn" onclick="cancelarEdicaoPedido()">Cancelar</button></div>';
+}
+
+function cancelarEdicaoPedido(){
+  _editPedIdx = -1;
+  itensPedido = [];
+  stabPed(0);
+  // restaura form vazio caso o usuario volte a criar
+  setTimeout(function(){
+    var el=document.getElementById('pdf2');
+    if(el) el.innerHTML = bPedForm();
+  }, 60);
+}
+
+function verJustificativa(i){
+  var ped = (curEmpresa&&curEmpresa.pedidos||[])[i];
+  if(!ped)return;
+  var j = ped.justificativaDivergencia || '(sem justificativa registrada)';
+  var divs = ped.divergenciasDetalhes || [];
+  var dtConf = ped.dataEntrada || '—';
+  var ov=document.createElement('div');ov.className='overlay';ov.id='justov';
+  var rowsDiv = divs.length > 0 ? divs.map(function(d){
+    return '<tr><td>'+esc(d.item||'—')+'</td>'
+      +'<td style="font-family:var(--mono);font-size:10px">'+(d.qtdPed!==undefined?d.qtdPed:'—')+'</td>'
+      +'<td style="font-family:var(--mono);font-size:10px">'+(d.qtdReal!==undefined?d.qtdReal:'—')+'</td>'
+      +'<td>'+(d.custoPed!==undefined?fR(d.custoPed):'—')+'</td>'
+      +'<td>'+(d.custoReal!==undefined?fR(d.custoReal):'—')+'</td>'
+      +'<td style="color:var(--danger);font-weight:700">'+esc(d.tipo||'')+'</td>'
+      +'</tr>';
+  }).join('') : '<tr><td colspan="6" class="empty">Sem detalhes salvos.</td></tr>';
+
+  ov.innerHTML='<div class="modal modal-lg"><div class="mt2">⚠ Divergência registrada</div>'
+    +'<div class="ms2">Pedido '+esc(ped.numero||'')+' · Conferido em '+dtConf+'</div>'
+    +'<div class="card"><div class="ct">Justificativa</div>'
+    +'<div style="font-size:11px;line-height:1.6;color:var(--t2);padding:8px 10px;background:var(--bg3);border-radius:6px;white-space:pre-wrap">'+esc(j)+'</div></div>'
+    +'<div class="card"><div class="ct">Itens divergentes ('+divs.length+')</div>'
+    +'<div style="overflow-x:auto"><table>'
+    +'<tr><th>Item</th><th>Qtd ped.</th><th>Qtd real</th><th>Custo ped.</th><th>Custo real</th><th>Tipo</th></tr>'
+    +rowsDiv+'</table></div></div>'
+    +'<div class="btns"><button class="btn" onclick="clsOv(\'justov\')">Fechar</button></div></div>';
+  document.body.appendChild(ov);
 }
 function abrirPedido(i){
   var ped=(curEmpresa&&curEmpresa.pedidos||[])[i];if(!ped)return;
   var forn=fornecedores.find(function(f){return f.id===ped.fornecedorId;});
   var total=ped.itens.reduce(function(a,it){return a+(it.custoTotal||0);},0);
+  var podeEditar = (ped.status==='rascunho'||ped.status==='enviado') && canEditData();
+
+  // Banner de conferencia
+  var confBanner = '';
+  if(ped.statusConferencia === 'divergente'){
+    confBanner = '<div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:6px;padding:10px 13px;margin-bottom:10px">'
+      +'<div style="font-size:11px;font-weight:700;color:var(--danger);margin-bottom:6px">⚠ Conferência divergente</div>'
+      +'<div style="font-size:10px;color:var(--t2);line-height:1.5"><b>Justificativa:</b> '+esc(ped.justificativaDivergencia||'(não informada)')+'</div>'
+      +'<div style="font-size:9px;color:var(--t3);margin-top:4px">Conferido em '+(ped.dataEntrada||'—')+(ped.divergenciasDetalhes?' · '+ped.divergenciasDetalhes.length+' item(ns) divergente(s)':'')+'</div>'
+      +'</div>';
+  } else if(ped.statusConferencia === 'conforme'){
+    confBanner = '<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);border-radius:6px;padding:8px 11px;margin-bottom:10px;font-size:10px;color:var(--green)">'
+      +'✓ Conferência <b>conforme</b> — pedido e entrada batem exatamente. Conferido em '+(ped.dataEntrada||'—')+'.'
+      +'</div>';
+  }
+
   var ov=document.createElement('div');ov.className='overlay';ov.id='pedov';
   ov.innerHTML='<div class="modal modal-lg"><div class="mt2">Pedido '+esc(ped.numero)+'</div>'
-    +'<div class="ms2">'+(forn?esc(forn.razaoSocial):'—')+' · '+ped.dataEmissao+'</div>'
+    +'<div class="ms2">'+(forn?esc(forn.razaoSocial):'—')+' · '+ped.dataEmissao+(ped.editadoEm?' · <span style="color:var(--warn)">editado em '+new Date(ped.editadoEm).toLocaleDateString('pt-BR')+'</span>':'')+'</div>'
+    +confBanner
     +'<div class="card"><div style="overflow-x:auto"><table>'
     +'<tr><th>Descrição</th><th>Qtd</th><th>Custo unit.</th><th>IPI</th><th>Total</th><th>PV sugerido</th></tr>'
     +ped.itens.map(function(it){
@@ -2604,8 +3005,9 @@ function abrirPedido(i){
     +'</table></div></div>'
     +pbr('Total do pedido',fR(total),'tot')
     +'<div class="btns">'
-    +(ped.status==='rascunho'?'<button class="btn p" onclick="enviarPedido('+i+')">Marcar como Enviado</button>':'')
-    +(ped.status==='enviado'?'<button class="btn g" onclick="clsOv(\'pedov\');registrarEntrada('+i+')">Registrar entrada</button>':'')
+    +(ped.status==='rascunho' && canEditData() ?'<button class="btn p" onclick="enviarPedido('+i+')">Marcar como Enviado</button>':'')
+    +(ped.status==='enviado' && canEditData() ?'<button class="btn g" onclick="clsOv(\'pedov\');registrarEntrada('+i+')">Registrar entrada</button>':'')
+    +(podeEditar?'<button class="btn" onclick="clsOv(\'pedov\');editarPedido('+i+')">✎ Editar</button>':'')
     +'<button class="btn" onclick="clsOv(\'pedov\')">Fechar</button></div></div>';
   document.body.appendChild(ov);
 }
@@ -2616,10 +3018,14 @@ function enviarPedido(i){
     .catch(function(e){toast('Erro: '+e.message);});
 }
 function registrarEntrada(i){
+  if(!canEditData()){toast('Sem permissão.');return;}
   var ped=(curEmpresa&&curEmpresa.pedidos||[])[i];if(!ped)return;
   var ov=document.createElement('div');ov.className='overlay';ov.id='entov';
   ov.innerHTML='<div class="modal modal-lg"><div class="mt2">Registrar entrada — Pedido '+esc(ped.numero)+'</div>'
     +'<div class="ms2">Escolha como registrar a entrada</div>'
+    +'<div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25);border-radius:6px;padding:8px 11px;font-size:10px;color:var(--t2);margin-bottom:10px;line-height:1.5">'
+    +'<b style="color:var(--gold2)">Como funciona:</b> Ao confirmar, o sistema compara automaticamente o que foi pedido com o que chegou. Se houver qualquer diferença em quantidade ou custo, será pedida uma justificativa e o pedido ficará marcado como <b>Divergente</b>.'
+    +'</div>'
     +'<div class="mcards">'
     +'<div class="mc sel" id="ent_xml_card" onclick="selEntTipo(\'xml\',this)"><div class="mct">📄 Entrada por XML</div><div class="mcs">Importar NF-e e cruzar com pedido</div></div>'
     +'<div class="mc" id="ent_man_card" onclick="selEntTipo(\'manual\',this)"><div class="mct">✍️ Entrada manual</div><div class="mcs">Registrar sem nota fiscal</div></div>'
@@ -2694,31 +3100,152 @@ function processarXMLEntrada(file,pedIdx){
   r.readAsText(file,'UTF-8');
 }
 function confirmarEntrada(pedIdx){
+  if(!canEditData()){toast('Sem permissão.');return;}
   var peds=curEmpresa.pedidos||[];
   var ped=peds[pedIdx];if(!ped)return;
+
+  // Coleta dados da entrada (XML ou manual) para comparar com o pedido
+  var entrada = []; // [{qtd, custo, desc}]
   if(_entTipo==='xml'){
-    ped.status='recebido_xml';
-    if(window._itensNF){
-      ped.itens.forEach(function(it,ii){
-        var nf=window._itensNF[ii];
-        if(nf&&it.produtoId!==undefined&&prods[it.produtoId]){
-          prods[it.produtoId].custo=nf.custo;
-        }
-      });
-    }
+    if(!window._itensNF||!window._itensNF.length){toast('Importe o XML primeiro.');return;}
+    entrada = ped.itens.map(function(it,ii){
+      var nf = window._itensNF[ii] || {};
+      return {
+        qtd: nf.qtd !== undefined ? parseFloat(nf.qtd) : it.qtd,
+        custo: nf.custo !== undefined ? parseFloat(nf.custo) : it.custoUnitPedido,
+        desc: nf.desc || it.descPedido || ''
+      };
+    });
   } else {
-    ped.status='recebido_manual';
-    ped.itens.forEach(function(it,ii){
+    entrada = ped.itens.map(function(it,ii){
       var qtdEl=document.getElementById('ent_qtd_'+ii);
       var cstEl=document.getElementById('ent_cst_'+ii);
-      if(cstEl&&it.produtoId!==undefined&&prods[it.produtoId]){
-        prods[it.produtoId].custo=parseFloat(cstEl.value)||prods[it.produtoId].custo;
-      }
+      return {
+        qtd: qtdEl ? (parseFloat(qtdEl.value)||it.qtd) : it.qtd,
+        custo: cstEl ? (parseFloat(cstEl.value)||it.custoUnitPedido) : it.custoUnitPedido,
+        desc: it.descPedido || ''
+      };
     });
   }
-  ped.dataEntrada=new Date().toISOString().slice(0,10);
-  db.collection('empresas').doc(curEmpresaId).update({pedidos:peds,prods:prods})
-    .then(function(){clsOv('entov');ren();toast('Entrada confirmada! Custos atualizados.');})
+
+  // Compara item a item — SEM TOLERANCIA (qualquer centavo/unidade diferente = divergencia)
+  var divergencias = [];
+  ped.itens.forEach(function(it,ii){
+    var e = entrada[ii] || {};
+    var qtdPed = parseFloat(it.qtd)||0;
+    var custoPed = parseFloat(it.custoUnitPedido)||0;
+    var qtdReal = parseFloat(e.qtd)||0;
+    var custoReal = parseFloat(e.custo)||0;
+    // arredonda pra 2 casas para nao dar falso positivo por erro de ponto flutuante
+    var difQtd = Math.round((qtdReal - qtdPed)*1000)/1000;
+    var difCusto = Math.round((custoReal - custoPed)*100)/100;
+    if(difQtd !== 0 || difCusto !== 0){
+      var tipos = [];
+      if(difQtd !== 0) tipos.push('Qtd ('+(difQtd>0?'+':'')+difQtd+')');
+      if(difCusto !== 0) tipos.push('Custo ('+(difCusto>0?'+':'')+fR(difCusto)+')');
+      divergencias.push({
+        item: it.descPedido || '—',
+        qtdPed: qtdPed,
+        qtdReal: qtdReal,
+        custoPed: custoPed,
+        custoReal: custoReal,
+        tipo: tipos.join(' · ')
+      });
+    }
+  });
+
+  // Salva os dados da entrada em window pra usar depois do modal de justificativa
+  window._pendEntrada = {pedIdx:pedIdx, entrada:entrada, divergencias:divergencias};
+
+  if(divergencias.length > 0){
+    // Tem divergencia — abre modal de justificativa OBRIGATORIA
+    abrirModalJustificativa(divergencias);
+  } else {
+    // Sem divergencia — marca conforme e finaliza direto
+    finalizarConferencia('conforme', '');
+  }
+}
+
+function abrirModalJustificativa(divergencias){
+  var ov=document.createElement('div');ov.className='overlay';ov.id='justinov';
+  var rows = divergencias.map(function(d){
+    return '<tr>'
+      +'<td style="font-weight:600">'+esc(d.item)+'</td>'
+      +'<td style="font-family:var(--mono);font-size:10px">'+d.qtdPed+'</td>'
+      +'<td style="font-family:var(--mono);font-size:10px;color:var(--warn);font-weight:700">'+d.qtdReal+'</td>'
+      +'<td>'+fR(d.custoPed)+'</td>'
+      +'<td style="color:var(--warn);font-weight:700">'+fR(d.custoReal)+'</td>'
+      +'<td style="color:var(--danger);font-size:10px">'+esc(d.tipo)+'</td>'
+      +'</tr>';
+  }).join('');
+
+  ov.innerHTML='<div class="modal modal-lg"><div class="mt2">⚠ Divergência detectada</div>'
+    +'<div class="ms2">'+divergencias.length+' item(ns) com diferença entre pedido e entrada</div>'
+    +'<div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:6px;padding:8px 11px;font-size:10px;color:var(--danger);margin-bottom:10px;line-height:1.5">'
+    +'<b>Atenção:</b> Os valores informados na entrada não batem com o pedido. Justifique a divergência antes de confirmar.'
+    +'</div>'
+    +'<div class="card"><div class="ct">Itens divergentes</div>'
+    +'<div style="overflow-x:auto"><table>'
+    +'<tr><th>Item</th><th>Qtd ped.</th><th>Qtd real</th><th>Custo ped.</th><th>Custo real</th><th>Tipo</th></tr>'
+    +rows+'</table></div></div>'
+    +'<div class="card"><div class="ct">Justificativa *</div>'
+    +'<textarea id="just_txt" placeholder="Explique o motivo da divergência. Ex: desconto concedido, perda em transporte, erro na nota..." style="width:100%;min-height:80px;background:var(--bg3);border:1px solid var(--bdr2);color:var(--text);border-radius:6px;padding:8px;font-size:11px;font-family:var(--sans);resize:vertical"></textarea>'
+    +'<div style="font-size:9px;color:var(--t3);margin-top:4px">Mínimo 10 caracteres. Ficará salvo no histórico do pedido.</div>'
+    +'</div>'
+    +'<div class="btns">'
+    +'<button class="btn d" onclick="confirmarDivergencia()">Confirmar com divergência</button>'
+    +'<button class="btn" onclick="clsOv(\'justinov\')">Cancelar</button>'
+    +'</div></div>';
+  document.body.appendChild(ov);
+}
+
+function confirmarDivergencia(){
+  var txt = (document.getElementById('just_txt').value||'').trim();
+  if(txt.length < 10){toast('Justificativa muito curta (mínimo 10 caracteres).');return;}
+  clsOv('justinov');
+  finalizarConferencia('divergente', txt);
+}
+
+function finalizarConferencia(statusConf, justificativa){
+  var p = window._pendEntrada;
+  if(!p){toast('Erro interno: dados da entrada perdidos.');return;}
+  var peds=curEmpresa.pedidos||[];
+  var ped=peds[p.pedIdx];if(!ped)return;
+
+  // Atualiza status da entrada (recebido_xml ou recebido_manual)
+  ped.status = (_entTipo==='xml') ? 'recebido_xml' : 'recebido_manual';
+  ped.dataEntrada = new Date().toISOString().slice(0,10);
+
+  // Status de conferencia e dados de divergencia
+  ped.statusConferencia = statusConf;
+  if(statusConf === 'divergente'){
+    ped.justificativaDivergencia = justificativa;
+    ped.divergenciasDetalhes = p.divergencias;
+    ped.conferidoPor = currentUser ? currentUser.uid : '';
+    ped.conferidoEm = new Date().toISOString();
+  } else {
+    ped.justificativaDivergencia = '';
+    ped.divergenciasDetalhes = [];
+    ped.conferidoPor = currentUser ? currentUser.uid : '';
+    ped.conferidoEm = new Date().toISOString();
+  }
+
+  // Atualiza custos dos produtos com valor REAL da entrada (nao do pedido)
+  ped.itens.forEach(function(it,ii){
+    var e = p.entrada[ii];
+    if(e && it.produtoId !== undefined && it.produtoId !== '' && prods[it.produtoId]){
+      prods[it.produtoId].custo = parseFloat(e.custo) || prods[it.produtoId].custo;
+    }
+  });
+
+  db.collection('empresas').doc(curEmpresaId).update({pedidos:peds, prods:prods})
+    .then(function(){
+      clsOv('entov');
+      window._pendEntrada = null;
+      window._itensNF = null;
+      ren();
+      toast(statusConf==='divergente' ? 'Entrada registrada com divergência!' : 'Entrada conferida — tudo certo!');
+    })
     .catch(function(e){toast('Erro: '+e.message);});
 }
 
@@ -2742,7 +3269,7 @@ return'<div class="ptab"><button class="ptb on" id="ptb0" onclick="stabP(0)">Pro
 +prods.map(function(p,i){var c=calcCT(p);
 return'<tr>'
 +'<td><input type="checkbox" class="prod-chk" '+(prodsSelecionados.indexOf(i)>=0?'checked':'')+' onchange="toggleProdSel('+i+',this)" style="cursor:pointer"></td>'
-+'<td style="font-family:var(--sans);font-weight:600;max-width:120px;overflow:hidden;text-overflow:ellipsis">'+esc(p.desc)+'</td>'
++'<td style="font-family:var(--sans);font-weight:600;max-width:140px;overflow:hidden;text-overflow:ellipsis">'+esc(p.desc)+(p.cadastroIncompleto?' <span class="badge byy" title="Produto criado rapidamente pelo pedido. Complete os dados fiscais." style="font-size:8px">⚠ Completar</span>':'')+'</td>'
 +'<td><span class="tag">'+(p.ncm||'—')+'</span></td>'
 +'<td>'+tipoBadge(p.tipoProd||'tributado')+'</td>'
 +'<td>'+fR(p.custo)+'</td>'
@@ -3023,18 +3550,49 @@ function calcP(){
   var mrg=parseFloat(document.getElementById('pmrg').value)||0;
   var conc2=parseFloat(document.getElementById('pcc').value)||0;
   var per=parseFloat(document.getElementById('ppv').value)||0;
+  var mcDes=parseFloat((document.getElementById('pmc')&&document.getElementById('pmc').value)||0)||0;
+  // Parâmetros de despesas da empresa
+  var despFixPct = parseFloat(params.despesasFixasPct)||0;
+  var despVarExtraPct = parseFloat(params.despesasVariaveisPct)||0;
+  var faturamentoMensal = parseFloat(params.faturamentoMensal)||0;
+  // IRPJ/CSLL (Bloco 4 - revenda apenas)
+  var irpjAliq = 0, csllAliq = 0; // alíquotas nominais efetivas sobre PV
+  if(regime === 'presumido'){
+    irpjAliq = 8 * 15 / 100;  // 1,20% (presunção 8% × IRPJ 15%)
+    csllAliq = 12 * 9 / 100;  // 1,08% (presunção 12% × CSLL 9%)
+  }
+  // Real: calcula sobre o lucro (não sobre PV) — aplicado depois do lucro operacional
+
   var pv=0,baseAdj=ct,estrutura=0;
   var dasAplicado=0,pisAplicado=0,cofinsAplicado=0;
   var credIcms=0,credPis=0,credCof=0;
   var icmsNom=temST?0:alqIntProd;
   var fcpPV=(!temST&&(regime==='presumido'||regime==='real'))?(priceProd.alqFCP||0):0;
-  if(regime==='simples'){dasAplicado=getDAS(tipoProd);estrutura=(dasAplicado+com+frtS+tax+mrg)/100;baseAdj=ct;}
-  else if(regime==='presumido'){pisAplicado=0.65;cofinsAplicado=3.00;estrutura=(icmsNom+fcpPV+pisAplicado+cofinsAplicado+com+frtS+tax+mrg)/100;baseAdj=ct;}
-  else if(regime==='real'){pisAplicado=1.65;cofinsAplicado=7.60;credIcms=temST?0:cu*alqOrig/100;credPis=cu*pisAplicado/100;credCof=cu*cofinsAplicado/100;estrutura=(icmsNom+fcpPV+pisAplicado+cofinsAplicado+com+frtS+tax+mrg)/100;baseAdj=ct-credIcms-credPis-credCof;}
+  if(regime==='simples'){dasAplicado=getDAS(tipoProd);estrutura=(dasAplicado+com+frtS+tax+mrg+despVarExtraPct)/100;baseAdj=ct;}
+  else if(regime==='presumido'){pisAplicado=0.65;cofinsAplicado=3.00;estrutura=(icmsNom+fcpPV+pisAplicado+cofinsAplicado+irpjAliq+csllAliq+com+frtS+tax+mrg+despVarExtraPct)/100;baseAdj=ct;}
+  else if(regime==='real'){pisAplicado=1.65;cofinsAplicado=7.60;credIcms=temST?0:cu*alqOrig/100;credPis=cu*pisAplicado/100;credCof=cu*cofinsAplicado/100;estrutura=(icmsNom+fcpPV+pisAplicado+cofinsAplicado+com+frtS+tax+mrg+despVarExtraPct)/100;baseAdj=ct-credIcms-credPis-credCof;}
   var parcelaCusto=1-estrutura;
+  // ── MÉTODO DE PRECIFICAÇÃO ──
   if(curMethod==='markup'){pv=parcelaCusto>0?baseAdj/parcelaCusto:0;}
   else if(curMethod==='cc'){if(!conc2){document.getElementById('pres').innerHTML='<div style="font-size:10px;color:var(--warn);padding:6px">Informe o preço da concorrência.</div>';return;}pv=conc2;}
-  else{if(!per){document.getElementById('pres').innerHTML='<div style="font-size:10px;color:var(--warn);padding:6px">Informe o valor percebido.</div>';return;}pv=per;}
+  else if(curMethod==='vp'){if(!per){document.getElementById('pres').innerHTML='<div style="font-size:10px;color:var(--warn);padding:6px">Informe o valor percebido.</div>';return;}pv=per;}
+  else if(curMethod==='mc'){
+    // Margem de Contribuição: PV = CPV / (1 - (custos variaveis% + (1 - MC%)))
+    // Custos variaveis incluem: impostos + comissao + frete saida + taxas + desp. var. extras
+    if(!mcDes){document.getElementById('pres').innerHTML='<div style="font-size:10px;color:var(--warn);padding:6px">Informe a MC desejada (%).</div>';return;}
+    var impostosVarPct = 0;
+    if(regime==='simples') impostosVarPct = dasAplicado;
+    else if(regime==='presumido') impostosVarPct = (temST?0:alqIntProd) + fcpPV + pisAplicado + cofinsAplicado + irpjAliq + csllAliq;
+    else if(regime==='real') impostosVarPct = (temST?0:alqIntProd) + fcpPV + pisAplicado + cofinsAplicado;
+    var custosVarPct = impostosVarPct + com + frtS + tax + despVarExtraPct;
+    // MC = PV - CustosVariaveis - CPV; MC% = MC/PV; 1 - MC% = (CPV + CustosVariaveis) / PV
+    // Para MC% desejada: PV × (1 - MC%/100 - custosVar/100) = CPV; logo PV = CPV / (1 - MC%/100 - custosVar/100)
+    var parcCusto = 1 - (mcDes/100) - (custosVarPct/100);
+    if(parcCusto <= 0){
+      document.getElementById('pres').innerHTML='<div style="font-size:10px;color:var(--danger);padding:6px">MC inviável: a soma (MC desejada + custos variáveis + impostos = '+(mcDes+custosVarPct).toFixed(1)+'%) é ≥ 100%. Reduza a MC ou revise os custos variáveis.</div>';return;
+    }
+    pv = baseAdj / parcCusto;
+  }
   var mf=pv>0?((pv-ct)/pv*100):0;
   var mkpR=ct>0?((pv/ct-1)*100).toFixed(1)+'%':'—';
   var mc2=minC(priceProd);var stComp=mc2!=null?(pv<=mc2?'ok':'nao'):'sem';
@@ -3044,15 +3602,44 @@ function calcP(){
   var pisL=pisD-credPis,cofL=cofD-credCof;
   var totalImp=regime==='simples'?dasTotal:(icmsL+pisL+cofL);
   var fcpPVval=regime!=='simples'&&!temST?pv*fcpPV/100:0;
-  var recLiq=pv-totalImp-fcpPVval;
+  // IRPJ/CSLL em R$
+  var irpjR = regime==='presumido' ? pv*irpjAliq/100 : 0;
+  var csllR = regime==='presumido' ? pv*csllAliq/100 : 0;
+  var recLiq=pv-totalImp-fcpPVval-irpjR-csllR;
   var lucroBruto=recLiq-ct;
-  var despOp=pv*(com+frtS+tax)/100;
+  var despOp=pv*(com+frtS+tax+despVarExtraPct)/100;
   var lucroOp=lucroBruto-despOp;
+  // IRPJ/CSLL no Lucro Real: calculado sobre lucro operacional (estimativa)
+  var irpjRealR = 0, csllRealR = 0;
+  if(regime==='real' && lucroOp > 0){
+    irpjRealR = lucroOp * 15 / 100;
+    csllRealR = lucroOp * 9 / 100;
+  }
+  var lucroAposTrib = lucroOp - irpjRealR - csllRealR;
+  // ── DESPESAS FIXAS ──
+  var despFixR = pv * despFixPct / 100;
+  var lucroLiq = lucroAposTrib - despFixR;
+  // ── MARGEM DE CONTRIBUIÇÃO ──
+  // MC$ = PV - CPV - custos variáveis (impostos + comissão + frete + taxas + desp var extras + IRPJ/CSLL presumido)
+  var custosVarR = totalImp + fcpPVval + despOp + irpjR + csllR;
+  var mcValor = pv - ct - custosVarR;
+  var mcPct = pv > 0 ? (mcValor/pv)*100 : 0;
+  // ── PONTO DE EQUILÍBRIO ──
+  // PE% = Despesas Fixas / MC% (para o produto)
+  // PE R$/mês = Despesas Fixas $/mês / MC%
+  var peMensal = 0, despFixMensalR = 0;
+  if(mcPct > 0 && faturamentoMensal > 0){
+    despFixMensalR = faturamentoMensal * despFixPct / 100;
+    peMensal = despFixMensalR / (mcPct/100);
+  }
+
   var antecR2=c.antecR||0,fcpR2=c.fcpR||0;
   var r='<div style="background:var(--bg3);border:1px solid var(--bdr2);border-radius:7px;padding:8px 12px;margin-bottom:8px;font-size:10px">'
     +'<span style="color:var(--t2)">Regime: </span><span style="font-weight:700;color:var(--gold2)">'+regimeName()+'</span>'
     +' &nbsp;·&nbsp; <span style="color:var(--t2)">Tipo: </span>'+tipoBadge(tipoProd)
-    +(regime==='simples'?' &nbsp;·&nbsp; <span style="color:var(--t2)">DAS: </span><span style="font-weight:700;color:var(--gold2)">'+dasAplicado+'%</span>':'')+'</div>';
+    +(regime==='simples'?' &nbsp;·&nbsp; <span style="color:var(--t2)">DAS: </span><span style="font-weight:700;color:var(--gold2)">'+dasAplicado+'%</span>':'')
+    +' &nbsp;·&nbsp; <span style="color:var(--t2)">Método: </span><span style="font-weight:700;color:var(--gold2)">'+(curMethod==='markup'?'Markup':curMethod==='cc'?'Concorrência':curMethod==='vp'?'Valor percebido':'MC '+mcDes+'%')+'</span>'
+    +'</div>';
   r+='<div class="pbox">';
   r+=pbr('CUSTO DO PRODUTO (CPV)','','sec');
   r+=pbr('Custo de aquisição',fR(cu),'sub');
@@ -3066,21 +3653,71 @@ function calcP(){
   r+=pbr('ESTRUTURA DO PREÇO DE VENDA','','sec');
   if(regime==='simples'){r+=pbr('DAS ('+dasAplicado+'%)',dasAplicado+'% sobre PV','sub');}
   else{r+=pbr('ICMS nominal',temST?'0% (ST)':alqIntProd+'%','sub');r+=pbr('PIS',pisAplicado+'%','sub');r+=pbr('COFINS',cofinsAplicado+'%','sub');}
-  r+=pbr('Comissão',com+'%','sub');r+=pbr('Frete de saída',frtS+'%','sub');r+=pbr('Taxas de cartão',tax+'%','sub');r+=pbr('Margem desejada',mrg+'%','sub');
-  r+=pbr('Parcela do custo',(parcelaCusto*100).toFixed(2)+'%','sub');
+  if(regime==='presumido'){r+=pbr('IRPJ (presunção 8% × 15%)',irpjAliq.toFixed(2)+'% sobre PV','sub');r+=pbr('CSLL (presunção 12% × 9%)',csllAliq.toFixed(2)+'% sobre PV','sub');}
+  r+=pbr('Comissão',com+'%','sub');r+=pbr('Frete de saída',frtS+'%','sub');r+=pbr('Taxas de cartão',tax+'%','sub');
+  if(despVarExtraPct>0)r+=pbr('Outras desp. variáveis',despVarExtraPct+'%','sub');
+  if(curMethod==='mc'){r+=pbr('MC desejada',mcDes+'%','sub');}
+  else{r+=pbr('Margem desejada',mrg+'%','sub');}
+  if(curMethod==='mc'){
+    // parcela do custo: 1 - MC% - custosVariaveis% (tudo sobre PV)
+    var impVar = regime==='simples'?dasAplicado:((temST?0:alqIntProd)+fcpPV+pisAplicado+cofinsAplicado+(regime==='presumido'?irpjAliq+csllAliq:0));
+    var cvTotal = impVar+com+frtS+tax+despVarExtraPct;
+    r+=pbr('Parcela do custo',(100-mcDes-cvTotal).toFixed(2)+'%','sub');
+  } else {
+    r+=pbr('Parcela do custo',(parcelaCusto*100).toFixed(2)+'%','sub');
+  }
   r+=pbr('PREÇO DE VENDA',fR(pv),'tot');r+=pbr('Markup real',mkpR,'sub');r+=pbr('Status',sBadge(stComp),'sub');r+='</div>';
+
+  // ── DRE ──
   r+='<div style="font-size:9px;font-weight:700;color:var(--t2);letter-spacing:.7px;text-transform:uppercase;margin:8px 0 5px">DEMONSTRATIVO DE RESULTADO</div>';
   r+='<div class="pbox">';r+=pbr('RECEITA BRUTA',fR(pv)+'  (100%)','tot');r+=pbr('(-) IMPOSTOS','','sec');
   if(regime==='simples'){r+=pbr('DAS ('+dasAplicado+'% × PV)',fR(dasTotal),'sub red');}
   else{if(!temST){r+=pbr('ICMS débito',fR(icmsD),'sub red');if(regime==='real')r+=pbr('ICMS crédito','− '+fR(credIcms),'sub grn');}else r+=pbr('ICMS','R$ 0,00 (ST)','sub');r+=pbr('PIS',fR(pisD),'sub red');if(regime==='real')r+=pbr('Crédito PIS','− '+fR(credPis),'sub grn');r+=pbr('COFINS',fR(cofD),'sub red');if(regime==='real')r+=pbr('Crédito COFINS','− '+fR(credCof),'sub grn');}
   if(fcpPV>0)r+=pbr('FCP ('+fcpPV+'% × PV)',fR(fcpPVval),'sub red');
+  if(regime==='presumido'){r+=pbr('IRPJ ('+irpjAliq.toFixed(2)+'% sobre PV)',fR(irpjR),'sub red');r+=pbr('CSLL ('+csllAliq.toFixed(2)+'% sobre PV)',fR(csllR),'sub red');}
   r+=pbr('= Receita líquida',fR(recLiq)+'  ('+pct(recLiq,pv)+')','tot');
   r+=pbr('(−) CPV','− '+fR(ct),'sec red');r+=pbr('= Lucro bruto',fR(lucroBruto)+'  ('+pct(lucroBruto,pv)+')','tot');
-  r+=pbr('(-) DESPESAS','','sec');r+=pbr('Comissão',fR(pv*com/100),'sub red');r+=pbr('Frete saída',fR(pv*frtS/100),'sub red');r+=pbr('Taxas cartão',fR(pv*tax/100),'sub red');
-  r+=pbr('= LUCRO OPERACIONAL LÍQUIDO',fR(lucroOp)+'  ('+pct(lucroOp,pv)+')','tot');r+='</div>';
+  r+=pbr('(-) DESPESAS VARIÁVEIS','','sec');r+=pbr('Comissão',fR(pv*com/100),'sub red');r+=pbr('Frete saída',fR(pv*frtS/100),'sub red');r+=pbr('Taxas cartão',fR(pv*tax/100),'sub red');
+  if(despVarExtraPct>0)r+=pbr('Outras desp. variáveis',fR(pv*despVarExtraPct/100),'sub red');
+  r+=pbr('= LUCRO OPERACIONAL',fR(lucroOp)+'  ('+pct(lucroOp,pv)+')','tot');
+  // IRPJ/CSLL no Lucro Real: sobre o lucro
+  if(regime==='real' && lucroOp > 0){
+    r+=pbr('(-) IRPJ/CSLL (estimativa)','','sec');
+    r+=pbr('IRPJ (15% sobre lucro)',fR(irpjRealR),'sub red');
+    r+=pbr('CSLL (9% sobre lucro)',fR(csllRealR),'sub red');
+    r+=pbr('= Lucro após tributos',fR(lucroAposTrib)+'  ('+pct(lucroAposTrib,pv)+')','tot');
+  }
+  // ── MARGEM DE CONTRIBUIÇÃO ──
+  r+='<div style="height:4px"></div>';
+  r+=pbr('MARGEM DE CONTRIBUIÇÃO','','sec');
+  r+=pbr('MC $ (PV − CPV − custos variáveis)',fR(mcValor),'sub');
+  r+=pbr('MC %',mcPct.toFixed(2)+'%','sub');
+  // ── DESPESAS FIXAS ──
+  if(despFixPct > 0){
+    r+='<div style="height:4px"></div>';
+    r+=pbr('(-) DESPESAS FIXAS ('+despFixPct+'% sobre PV)','','sec red');
+    r+=pbr('Despesas fixas (rateio)',fR(despFixR),'sub red');
+    r+=pbr('= LUCRO LÍQUIDO',fR(lucroLiq)+'  ('+pct(lucroLiq,pv)+')','tot');
+  } else {
+    r+='<div style="font-size:9px;color:var(--t3);margin-top:6px;font-style:italic">Configure despesas fixas em Empresas → Parâmetros para ver o lucro líquido real.</div>';
+  }
+  r+='</div>';
+
+  // ── PONTO DE EQUILÍBRIO ──
+  if(mcPct > 0 && despFixPct > 0){
+    r+='<div style="background:rgba(201,162,84,.08);border:1px solid rgba(201,162,84,.2);border-radius:6px;padding:9px 12px;font-size:10px;margin-top:6px;line-height:1.6">'
+      +'<div style="font-weight:700;color:var(--gold2);margin-bottom:4px">📍 Ponto de Equilíbrio</div>'
+      +'<div>Nesta MC de <b style="color:var(--gold2)">'+mcPct.toFixed(2)+'%</b>, você precisa vender pelo menos <b style="color:var(--gold2)">'+(despFixPct/(mcPct/100)).toFixed(2)+'%</b> do seu faturamento em produtos com esta margem para cobrir as despesas fixas.</div>'
+      +(faturamentoMensal>0?'<div style="margin-top:3px">Traduzindo em R$: despesas fixas ~<b>'+fR(despFixMensalR)+'/mês</b> → PE mensal <b style="color:var(--gold2)">'+fR(peMensal)+'</b>.</div>':'')
+      +'</div>';
+  }
+
   if(pv<ct)r+='<div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:6px;padding:7px 11px;font-size:10px;font-weight:600;color:var(--danger);margin-top:6px">Preço abaixo do custo! Prejuízo de '+fR(ct-pv)+'.</div>';
   if(mc2!=null&&pv>mc2)r+='<div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:6px;padding:7px 11px;font-size:10px;font-weight:600;color:var(--warn);margin-top:6px">Preço '+(((pv/mc2-1)*100).toFixed(1))+'% acima do menor concorrente ('+fR(mc2)+').</div>';
   else if(mc2!=null&&pv<=mc2)r+='<div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:6px;padding:7px 11px;font-size:10px;font-weight:600;color:var(--green);margin-top:6px">Competitivo — '+fR(mc2-pv)+' abaixo do menor concorrente.</div>';
+  if(regime==='real'){
+    r+='<div style="font-size:9px;color:var(--t3);margin-top:6px;font-style:italic">Nota: IRPJ/CSLL no Lucro Real são estimativas sobre o lucro operacional deste produto. A apuração efetiva depende do LALUR consolidado e despesas dedutíveis do período.</div>';
+  }
   document.getElementById('pres').innerHTML=r;
   var sb=document.getElementById('savebtn');
   if(sb){sb.style.display='block';sb.onclick=function(){
@@ -3098,10 +3735,11 @@ function showPM(){
   var ov=document.createElement('div');ov.className='overlay';ov.id='pmov';
   ov.innerHTML='<div class="modal modal-lg"><div class="mt2">Formação de preço</div>'
     +'<div class="ms2">'+esc(priceProd.desc)+' · Custo total: '+fR(c.ct)+' · Regime: '+regimeName()+'</div>'
-    +'<div class="mcards">'
+    +'<div class="mcards" style="grid-template-columns:repeat(4,1fr)">'
     +'<div class="mc sel" onclick="selMC(\'markup\',this)"><div class="mct">1. Markup</div><div class="mcs">PV = Base ajustada ÷ parcela custo</div></div>'
     +'<div class="mc" onclick="selMC(\'cc\',this)"><div class="mct">2. Concorrência</div><div class="mcs">Preço de mercado como referência</div></div>'
     +'<div class="mc" onclick="selMC(\'vp\',this)"><div class="mct">3. Valor percebido</div><div class="mcs">Ancoragem no cliente</div></div>'
+    +'<div class="mc" onclick="selMC(\'mc\',this)"><div class="mct">4. Margem de Contribuição</div><div class="mcs">MC% desejada cobre despesas fixas</div></div>'
     +'</div><div class="divider"></div>'
     +'<div class="g3f" style="margin-bottom:8px">'
     +'<div class="f"><label>Comissão (%) '+tip('pm_com','Comissão de venda','Percentual pago ao vendedor sobre o preço de venda.','Combinado com a equipe comercial ou política interna.','3% se o vendedor recebe R$ 3 a cada R$ 100 vendidos.')+'</label><input type="number" id="pcom" value="3" oninput="calcP()"></div>'
@@ -3110,6 +3748,7 @@ function showPM(){
     +'<div class="f"><label>Margem desejada (%) '+tip('pm_mrg','Margem de lucro desejada','Lucro operacional alvo sobre o preço de venda. NÃO é markup.','Definido pelo gestor com base no setor e estratégia.','20% significa que 20% do preço final será lucro operacional.')+'</label><input type="number" id="pmrg" value="20" oninput="calcP()"></div>'
     +'<div class="f"><label>Menor conc. (R$) '+tip('pm_cc','Menor concorrente','Preço mais baixo praticado por concorrentes, usado como teto de comparação.','Pesquisa de mercado, sites concorrentes, cotações.','Se o concorrente mais barato vende por R$ 50, informe 50.')+'</label><input type="number" id="pcc" value="'+(mc2||'')+'" placeholder="Opcional" oninput="calcP()"></div>'
     +'<div class="f"><label>Valor percebido (R$) '+tip('pm_pv','Valor percebido','Preço que o cliente acha justo pagar (ancoragem psicológica).','Pesquisa com clientes, posicionamento de marca, valor percebido.','Se o cliente acha justo pagar R$ 80, informe 80.')+'</label><input type="number" id="ppv" placeholder="Opcional" oninput="calcP()"></div>'
+    +'<div class="f"><label>MC desejada (%) '+tip('pm_mc','Margem de Contribuição','Quanto sobra do PV após pagar TUDO que varia com a venda (CPV + impostos + comissão + frete saída + taxas). Essa sobra cobre as despesas fixas e o que restar é o lucro real. Fórmula: MC$ = PV - custos variáveis; MC% = MC$ / PV × 100. Ponto de equilíbrio: PE = Despesas Fixas / MC%.','Somar despesas fixas % + margem de lucro desejada. Ex: 20% fixas + 15% lucro = 35% MC.','35% se suas despesas fixas são 20% do faturamento e você quer 15% de lucro líquido.')+'</label><input type="number" id="pmc" placeholder="ex: 35" oninput="calcP()"></div>'
     +'</div><div id="pres"></div>'
     +'<div class="btns" style="margin-top:8px"><button class="btn p" id="savebtn" style="display:none">Salvar preço</button>'
     +'<button class="btn g" onclick="gerarPDFProd(priceProdIdx)">&#128196; PDF</button>'
