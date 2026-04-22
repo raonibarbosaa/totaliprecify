@@ -3023,14 +3023,32 @@ function savePedido(){
     numero:document.getElementById('pd_num').value||(pedExistente?pedExistente.numero:('PED-'+(((curEmpresa&&curEmpresa.pedidos)||[]).length+1))),
     fornecedorId:fornId,
     dataEmissao:document.getElementById('pd_data').value||(pedExistente?pedExistente.dataEmissao:new Date().toISOString().slice(0,10)),
-    dataPrevisao:document.getElementById('pd_prev').value,
-    observacoes:document.getElementById('pd_obs').value,
+    dataPrevisao:document.getElementById('pd_prev').value||'',
+    observacoes:document.getElementById('pd_obs').value||'',
     itens:itensPedido.slice(),
     status: pedExistente ? pedExistente.status : 'rascunho',
-    criadoEm: pedExistente ? pedExistente.criadoEm : new Date().toISOString(),
-    editadoEm: pedExistente ? new Date().toISOString() : undefined,
-    editadoPor: pedExistente && currentUser ? currentUser.uid : undefined
+    criadoEm: pedExistente ? pedExistente.criadoEm : new Date().toISOString()
   };
+  // Só inclui editadoEm/editadoPor se estiver EDITANDO (Firestore rejeita undefined)
+  if(pedExistente){
+    ped.editadoEm = new Date().toISOString();
+    if(currentUser && currentUser.uid) ped.editadoPor = currentUser.uid;
+    // Preserva campos de conferência se existirem
+    if(pedExistente.statusConferencia) ped.statusConferencia = pedExistente.statusConferencia;
+    if(pedExistente.justificativaDivergencia) ped.justificativaDivergencia = pedExistente.justificativaDivergencia;
+    if(pedExistente.divergenciasDetalhes) ped.divergenciasDetalhes = pedExistente.divergenciasDetalhes;
+    if(pedExistente.dataEntrada) ped.dataEntrada = pedExistente.dataEntrada;
+    if(pedExistente.conferidoPor) ped.conferidoPor = pedExistente.conferidoPor;
+    if(pedExistente.conferidoEm) ped.conferidoEm = pedExistente.conferidoEm;
+  }
+  // Limpa propriedades undefined nos itens também (por segurança)
+  ped.itens = ped.itens.map(function(it){
+    var clean = {};
+    Object.keys(it).forEach(function(k){
+      if(it[k] !== undefined && it[k] !== null) clean[k] = it[k];
+    });
+    return clean;
+  });
   if(!curEmpresa.pedidos)curEmpresa.pedidos=[];
   if(_editPedIdx >= 0){
     curEmpresa.pedidos[_editPedIdx] = ped;
