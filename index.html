@@ -995,7 +995,7 @@ async function confirmarConf(){
     if(peds[_confPedidoIdx]){
       peds[_confPedidoIdx].status=diverg>0?'divergente':'recebido_xml';
       peds[_confPedidoIdx].dataEntrada=_confData;
-      await db.collection('empresas').doc(curEmpresaId).update({pedidos:peds});
+      await db.collection('empresas').doc(curEmpresaId).update({pedidos: stripUndefined(peds)});
     }
   }
 
@@ -1107,10 +1107,10 @@ async function excluirConferencia(idx){
   if(!confirm('Confirma DEFINITIVAMENTE a exclusão?'))return;
   conferencias.splice(idx,1);
   try {
-    await db.collection('empresas').doc(curEmpresaId).update({conferencias: conferencias});
+    await db.collection('empresas').doc(curEmpresaId).update({conferencias: stripUndefined(conferencias)});
     toast('Conferência excluída.');
     ren();
-  } catch(e){ toast('Erro: '+e.message); }
+  } catch(e){ console.error('[excluirConferencia]',e); toast('Erro: '+e.message); }
 }
 
 
@@ -2967,7 +2967,7 @@ function salvarCadastroRapidoProd(){
     itensPedido[_crpItemIdx].ipi = ipi;
     calcItemPed(_crpItemIdx);
   }
-  db.collection('empresas').doc(curEmpresaId).update({prods:prods})
+  db.collection('empresas').doc(curEmpresaId).update({prods: stripUndefined(prods)})
     .then(function(){
       clsOv('crpov');
       if(_crpItemIdx >= 0){
@@ -2980,7 +2980,7 @@ function salvarCadastroRapidoProd(){
       _crpItemIdx = -1;
       _crpItemTemporario = false;
     })
-    .catch(function(e){toast('Erro: '+e.message);});
+    .catch(function(e){console.error('[salvarCadastroRapidoProd]',e);toast('Erro: '+e.message);});
 }
 function selProdPed(i,pi){
   if(pi==='')return;
@@ -3000,6 +3000,27 @@ function calcItemPed(i){
 }
 function delItemPed(i){itensPedido.splice(i,1);renderItensPedido();}
 var _editPedIdx = -1; // indice do pedido em edicao (-1 = novo)
+
+// Remove TODOS os campos undefined de um objeto ou array, recursivamente.
+// Firestore rejeita 'undefined' mas aceita null, string vazia, 0, false, [].
+// Percorre objetos aninhados e arrays, fazendo deep clean.
+function stripUndefined(val){
+  if(val === undefined) return null; // caso chegue undefined raiz
+  if(val === null) return null;
+  if(Array.isArray(val)){
+    return val.map(stripUndefined);
+  }
+  if(typeof val === 'object' && val.constructor === Object){
+    var clean = {};
+    Object.keys(val).forEach(function(k){
+      if(val[k] === undefined) return; // pula chave undefined
+      clean[k] = stripUndefined(val[k]);
+    });
+    return clean;
+  }
+  // primitivos (string, number, boolean): retorna como está
+  return val;
+}
 
 function savePedido(){
   if(!canEditData()){toast('Sem permissão.');return;}
@@ -3056,13 +3077,20 @@ function savePedido(){
     curEmpresa.pedidos.push(ped);
   }
   var wasEditing = _editPedIdx >= 0;
-  db.collection('empresas').doc(curEmpresaId).update({pedidos:curEmpresa.pedidos})
+  // LIMPEZA FINAL: remove TODO undefined do array de pedidos (inclui pedidos antigos)
+  var pedidosLimpos = stripUndefined(curEmpresa.pedidos);
+  console.log('[savePedido] Gravando', pedidosLimpos.length, 'pedidos. Novo pedido:', ped);
+  db.collection('empresas').doc(curEmpresaId).update({pedidos: pedidosLimpos})
     .then(function(){
+      curEmpresa.pedidos = pedidosLimpos;
       itensPedido=[]; _editPedIdx = -1;
       stabPed(0); ren();
       toast(wasEditing?'Pedido atualizado!':'Pedido salvo!');
     })
-    .catch(function(e){toast('Erro: '+e.message);});
+    .catch(function(e){
+      console.error('[savePedido] Erro Firestore:', e, 'Dados enviados:', pedidosLimpos);
+      toast('Erro: '+e.message);
+    });
 }
 
 function editarPedido(i){
@@ -3133,10 +3161,12 @@ async function excluirPedido(i){
   if(!confirm('Confirma DEFINITIVAMENTE a exclusão do pedido '+numero+'?'))return;
   curEmpresa.pedidos.splice(i,1);
   try {
-    await db.collection('empresas').doc(curEmpresaId).update({pedidos: curEmpresa.pedidos});
+    var pedidosLimpos4 = stripUndefined(curEmpresa.pedidos);
+    await db.collection('empresas').doc(curEmpresaId).update({pedidos: pedidosLimpos4});
+    curEmpresa.pedidos = pedidosLimpos4;
     toast('Pedido '+numero+' excluído.');
     ren();
-  } catch(e){ toast('Erro: '+e.message); }
+  } catch(e){ console.error('[excluirPedido]',e); toast('Erro: '+e.message); }
 }
 
 function verJustificativa(i){
@@ -3221,9 +3251,10 @@ function abrirPedido(i){
 }
 function enviarPedido(i){
   var peds=curEmpresa.pedidos||[];peds[i].status='enviado';
-  db.collection('empresas').doc(curEmpresaId).update({pedidos:peds})
-    .then(function(){clsOv('pedov');ren();toast('Pedido marcado como enviado!');})
-    .catch(function(e){toast('Erro: '+e.message);});
+  var pedidosLimpos3 = stripUndefined(peds);
+  db.collection('empresas').doc(curEmpresaId).update({pedidos: pedidosLimpos3})
+    .then(function(){curEmpresa.pedidos=pedidosLimpos3;clsOv('pedov');ren();toast('Pedido marcado como enviado!');})
+    .catch(function(e){console.error('[enviarPedido]',e);toast('Erro: '+e.message);});
 }
 function registrarEntrada(i){
   if(!canEditData()){toast('Sem permissão.');return;}
@@ -3446,7 +3477,9 @@ function finalizarConferencia(statusConf, justificativa){
     }
   });
 
-  db.collection('empresas').doc(curEmpresaId).update({pedidos:peds, prods:prods})
+  var pedidosLimpos2 = stripUndefined(peds);
+  var prodsLimpos2 = stripUndefined(prods);
+  db.collection('empresas').doc(curEmpresaId).update({pedidos: pedidosLimpos2, prods: prodsLimpos2})
     .then(function(){
       clsOv('entov');
       window._pendEntrada = null;
@@ -3454,7 +3487,7 @@ function finalizarConferencia(statusConf, justificativa){
       ren();
       toast(statusConf==='divergente' ? 'Entrada registrada com divergência!' : 'Entrada conferida — tudo certo!');
     })
-    .catch(function(e){toast('Erro: '+e.message);});
+    .catch(function(e){console.error('[finalizarConferencia]',e);toast('Erro: '+e.message);});
 }
 
 // ── CADASTRO DE PRODUTOS ──────────────────────────────────
