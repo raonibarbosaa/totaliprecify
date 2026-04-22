@@ -373,6 +373,247 @@ function imprimirPDF(){
   setTimeout(function(){var el=document.getElementById('print-area');if(el)el.remove();},2000);
 }
 
+// ═══ PREVIEW GENÉRICO (para pedido / conferência / outros relatórios) ════
+// Abre o mesmo modal dourado com qualquer HTML pronto
+function abrirPreviewHTML(htmlContent, titulo){
+  var backdrop=document.createElement('div');
+  backdrop.className='pdf-backdrop';
+  backdrop.id='pdf-preview-backdrop';
+  backdrop.innerHTML='<div class="pdf-modal">'
+    +'<div class="pdf-modal-header">'
+    +'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#E8B963" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.1rem;height:1.1rem;flex-shrink:0"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
+    +'<span style="color:white;font-weight:600;font-size:.9rem;flex:1">'+(titulo||'Preview')+'</span>'
+    +'<button onclick="imprimirPDF()" style="background:linear-gradient(135deg,#C8963E,#E8B963);color:white;border:none;border-radius:.4rem;padding:.5rem 1.1rem;font-weight:600;font-size:.8rem;cursor:pointer;display:flex;align-items:center;gap:.4rem;white-space:nowrap;flex-shrink:0">'
+    +'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:.85rem;height:.85rem"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>'
+    +'Imprimir / Salvar PDF</button>'
+    +'<button onclick="fecharPreviewPDF()" style="background:transparent;color:rgba(255,255,255,.75);border:1.5px solid rgba(255,255,255,.3);border-radius:.4rem;padding:.5rem .875rem;font-weight:500;font-size:.8rem;cursor:pointer;white-space:nowrap;flex-shrink:0;margin-left:.4rem">&#10005; Fechar</button>'
+    +'</div>'
+    +'<div class="pdf-modal-body" id="pdf-preview-body">'+htmlContent+'</div>'
+    +'</div>';
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener('click',function(e){if(e.target===backdrop)fecharPreviewPDF();});
+}
+
+// ═══ IMPRESSÃO DE PEDIDO DE COMPRA ════════════════════════════════════
+function imprimirPedido(idx){
+  var ped = (curEmpresa && curEmpresa.pedidos || [])[idx];
+  if(!ped){ toast('Pedido não encontrado.'); return; }
+  var html = buildPedidoPrintHTML(ped);
+  abrirPreviewHTML(html, 'Pedido de Compra '+(ped.numero||''));
+}
+
+function buildPedidoPrintHTML(ped){
+  var emp = curEmpresa || {};
+  var cnpjFmt = emp.cnpj ? fCNPJ(emp.cnpj) : '';
+  var dataHoje = new Date().toLocaleDateString('pt-BR');
+  var forn = fornecedores.find(function(f){return f.id===ped.fornecedorId;});
+  var fornCNPJ = forn && forn.cnpj ? fCNPJ(forn.cnpj) : '';
+  var totalPedido = (ped.itens||[]).reduce(function(a,it){return a+(parseFloat(it.custoTotal)||0);},0);
+  var totalItens = (ped.itens||[]).length;
+  var qtdTotal = (ped.itens||[]).reduce(function(a,it){return a+(parseFloat(it.qtd)||0);},0);
+  var stLabel={rascunho:'Rascunho',enviado:'Enviado',recebido_xml:'Recebido (XML)',recebido_manual:'Recebido (Manual)'}[ped.status]||ped.status;
+  var confLabel = '';
+  if(ped.statusConferencia==='divergente') confLabel = ' · Conferência divergente';
+  else if(ped.statusConferencia==='conforme') confLabel = ' · Conferência conforme';
+
+  // Cabeçalho
+  var header = '<table style="width:100%;border-collapse:collapse;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #1b2f4e"><tr>'
+    +'<td style="vertical-align:middle"><img src="'+LOGO_DARK+'" style="height:38px;width:auto" alt="Totali"><br>'
+    +'<span style="font-size:14pt;font-weight:700;color:#0D1F3C;font-family:Georgia,serif">'+esc(emp.razaoSocial||'Totali Precify')+'</span><br>'
+    +'<span style="font-size:8pt;color:#555">CNPJ: '+cnpjFmt+'</span></td>'
+    +'<td style="text-align:right;vertical-align:top"><div style="font-size:9pt;color:#555">Emitido em: '+dataHoje+'</div>'
+    +'<div style="font-size:8pt;color:#888;margin-top:3px">Status: '+stLabel+confLabel+'</div></td></tr></table>';
+
+  // Bloco info do pedido
+  var infoPedido = '<table style="width:100%;border-collapse:collapse;margin-bottom:14px">'
+    +'<tr><td colspan="4" style="background:#1b2f4e;color:#E8B963;padding:9px 14px;font-size:11pt;font-weight:700;letter-spacing:.3px">PEDIDO DE COMPRA Nº '+esc(ped.numero||'—')+'</td></tr>'
+    +'<tr style="background:#eef2f7">'
+    +'<td style="padding:6px 12px;font-size:9pt;color:#444;border:1px solid #E5E7EB;width:50%"><b>Fornecedor:</b><br>'+(forn?esc(forn.razaoSocial):'—')+(fornCNPJ?'<br>CNPJ: '+fornCNPJ:'')+(forn&&forn.telefone?'<br>Tel: '+esc(forn.telefone):'')+'</td>'
+    +'<td style="padding:6px 12px;font-size:9pt;color:#444;border:1px solid #E5E7EB"><b>Data emissão:</b><br>'+(ped.dataEmissao||'—')+'</td>'
+    +'<td style="padding:6px 12px;font-size:9pt;color:#444;border:1px solid #E5E7EB"><b>Previsão entrega:</b><br>'+(ped.dataPrevisao||'—')+'</td>'
+    +'<td style="padding:6px 12px;font-size:9pt;color:#444;border:1px solid #E5E7EB"><b>Data entrada:</b><br>'+(ped.dataEntrada||'—')+'</td></tr>'
+    +(ped.observacoes?'<tr><td colspan="4" style="padding:6px 12px;font-size:9pt;color:#444;border:1px solid #E5E7EB;background:#fff"><b>Observações:</b> '+esc(ped.observacoes)+'</td></tr>':'')
+    +'</table>';
+
+  // Tabela de itens
+  var itens = (ped.itens||[]).map(function(it, i){
+    var p = (it.produtoId !== undefined && it.produtoId !== '' && it.produtoId !== null) ? prods[it.produtoId] : null;
+    var bg = i%2===0 ? '#ffffff' : '#f9fafb';
+    return '<tr class="no-break" style="background:'+bg+'">'
+      +'<td style="padding:6px 10px;font-size:9pt;color:#555;text-align:center;border:1px solid #E5E7EB;font-family:Courier New,monospace">'+(i+1)+'</td>'
+      +'<td style="padding:6px 10px;font-size:9.5pt;font-weight:600;color:#111;border:1px solid #E5E7EB">'+esc(it.descPedido||(p?p.desc:'—'))+'</td>'
+      +'<td style="padding:6px 10px;font-size:9pt;color:#555;text-align:center;border:1px solid #E5E7EB">'+(p?(p.ncm||'—'):'—')+'</td>'
+      +'<td style="padding:6px 10px;font-size:9.5pt;text-align:right;font-family:Courier New,monospace;color:#111;border:1px solid #E5E7EB">'+(parseFloat(it.qtd)||0).toFixed(2)+'</td>'
+      +'<td style="padding:6px 10px;font-size:9.5pt;text-align:right;font-family:Courier New,monospace;color:#111;border:1px solid #E5E7EB">'+fmtR(it.custoUnitPedido)+'</td>'
+      +'<td style="padding:6px 10px;font-size:9pt;text-align:center;font-family:Courier New,monospace;color:#555;border:1px solid #E5E7EB">'+(parseFloat(it.ipi)||0).toFixed(1)+'%</td>'
+      +'<td style="padding:6px 10px;font-size:9.5pt;text-align:right;font-family:Courier New,monospace;font-weight:700;color:#92400e;border:1px solid #E5E7EB">'+fmtR(it.custoTotal)+'</td>'
+      +'</tr>';
+  }).join('');
+
+  var tabela = '<table style="width:100%;border-collapse:collapse;margin-bottom:14px">'
+    +'<tr><td colspan="7" style="background:#1b2f4e;color:#E8B963;padding:7px 14px;font-size:9.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Itens do pedido</td></tr>'
+    +'<tr style="background:#eef2f7">'
+    +'<th style="padding:6px 10px;font-size:9pt;color:#333;border:1px solid #E5E7EB;width:40px">#</th>'
+    +'<th style="padding:6px 10px;text-align:left;font-size:9pt;color:#333;border:1px solid #E5E7EB">Descrição</th>'
+    +'<th style="padding:6px 10px;font-size:9pt;color:#333;border:1px solid #E5E7EB">NCM</th>'
+    +'<th style="padding:6px 10px;text-align:right;font-size:9pt;color:#333;border:1px solid #E5E7EB">Qtd</th>'
+    +'<th style="padding:6px 10px;text-align:right;font-size:9pt;color:#333;border:1px solid #E5E7EB">Custo un.</th>'
+    +'<th style="padding:6px 10px;font-size:9pt;color:#333;border:1px solid #E5E7EB">IPI</th>'
+    +'<th style="padding:6px 10px;text-align:right;font-size:9pt;color:#333;border:1px solid #E5E7EB">Total</th>'
+    +'</tr>'
+    +itens
+    +'<tr style="background:#F5EDD8"><td colspan="3" style="padding:8px 12px;font-size:10pt;font-weight:700;color:#111;border:1px solid #E5D5A8;text-align:right">TOTAIS</td>'
+    +'<td style="padding:8px 10px;text-align:right;font-family:Courier New,monospace;font-size:10pt;font-weight:700;color:#111;border:1px solid #E5D5A8">'+qtdTotal.toFixed(2)+'</td>'
+    +'<td colspan="2" style="border:1px solid #E5D5A8"></td>'
+    +'<td style="padding:8px 10px;text-align:right;font-family:Courier New,monospace;font-size:10pt;font-weight:700;color:#92400e;border:1px solid #E5D5A8">'+fmtR(totalPedido)+'</td></tr>'
+    +'</table>';
+
+  // Resumo inferior
+  var resumo = '<table style="width:100%;border-collapse:collapse;margin-bottom:14px">'
+    +'<tr>'
+    +'<td style="width:25%;padding:10px 14px;background:#f8f9fa;border:1px solid #e5e7eb;text-align:center"><div style="font-size:8pt;color:#555;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">Total de Itens</div><div style="font-size:14pt;font-weight:700;color:#1b2f4e;font-family:Courier New,monospace">'+totalItens+'</div></td>'
+    +'<td style="width:25%;padding:10px 14px;background:#f8f9fa;border:1px solid #e5e7eb;text-align:center"><div style="font-size:8pt;color:#555;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">Quantidade Total</div><div style="font-size:14pt;font-weight:700;color:#1b2f4e;font-family:Courier New,monospace">'+qtdTotal.toFixed(2)+'</div></td>'
+    +'<td style="width:50%;padding:10px 14px;background:#1b2f4e;border:1px solid #1b2f4e;text-align:center"><div style="font-size:8pt;color:#E8B963;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">Valor Total do Pedido</div><div style="font-size:16pt;font-weight:700;color:#4ade80;font-family:Courier New,monospace">'+fmtR(totalPedido)+'</div></td>'
+    +'</tr></table>';
+
+  // Se tem divergência de conferência, banner
+  var divBanner = '';
+  if(ped.statusConferencia==='divergente' && ped.justificativaDivergencia){
+    divBanner = '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;padding:10px 14px;margin-bottom:14px"><div style="font-size:10pt;font-weight:700;color:#991b1b;margin-bottom:4px">⚠ Conferência divergente</div><div style="font-size:9pt;color:#555;line-height:1.5">Justificativa: '+esc(ped.justificativaDivergencia)+'</div></div>';
+  }
+
+  var footer = '<table style="width:100%;margin-top:30px;border-collapse:collapse"><tr>'
+    +'<td style="width:45%;text-align:center;padding-top:20px;border-top:1px solid #333;font-size:10px;font-weight:700">'+esc(emp.razaoSocial||'Empresa')+'<br><span style="font-weight:400;color:#555;font-size:9px">Representante Legal</span></td>'
+    +'<td style="width:10%"></td>'
+    +'<td style="width:45%;text-align:center;padding-top:20px;border-top:1px solid #333;font-size:10px;font-weight:700">'+(forn?esc(forn.razaoSocial):'Fornecedor')+'<br><span style="font-weight:400;color:#555;font-size:9px">Ciente e de acordo</span></td></tr>'
+    +'<tr><td colspan="3" style="padding-top:16px;font-size:9px;color:#888;text-align:center">Gerado por Totali Precify &middot; totalicontabilidade.com.br &middot; '+dataHoje+'</td></tr></table>';
+
+  return '<div style="font-family:Arial,Helvetica,sans-serif;color:#111;font-size:10pt;line-height:1.5">'
+    +'<div style="text-align:center;margin-bottom:12px"><div style="font-size:13pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#1b2f4e">PEDIDO DE COMPRA</div>'
+    +'<div style="font-size:9pt;color:#555;margin-top:2px">Nº '+esc(ped.numero||'—')+'</div></div>'
+    +header
+    +infoPedido
+    +divBanner
+    +tabela
+    +resumo
+    +footer+'</div>';
+}
+
+// ═══ IMPRESSÃO DE CONFERÊNCIA ════════════════════════════════════════
+function imprimirConferencia(idx){
+  var c = conferencias[idx];
+  if(!c){ toast('Conferência não encontrada.'); return; }
+  var html = buildConferenciaPrintHTML(c);
+  abrirPreviewHTML(html, 'Conferência '+(c.notaFiscalNum?'NF-'+c.notaFiscalNum:'Manual'));
+}
+
+function buildConferenciaPrintHTML(c){
+  var emp = curEmpresa || {};
+  var cnpjFmt = emp.cnpj ? fCNPJ(emp.cnpj) : '';
+  var dataHoje = new Date().toLocaleDateString('pt-BR');
+  var forn = c.fornecedor || {};
+  var fornCNPJ = forn.cnpj ? fCNPJ(forn.cnpj) : '';
+  var stLabel = c.status==='conferido'?'Conferido':c.status==='divergente'?'Divergente':'Pendente';
+  var pedVinc = c.pedidoId ? ((curEmpresa&&curEmpresa.pedidos)||[]).find(function(p){return p.id===c.pedidoId;}) : null;
+
+  var itensList = (c.itens||[]);
+  var totalItens = itensList.length;
+  var itensDiv = itensList.filter(function(it){return it.divergenciaQtd||it.divergenciaPreco;}).length;
+  var itensOk = totalItens - itensDiv;
+  var totalNF = (c.totais && c.totais.vNF) || itensList.reduce(function(a,it){return a + (parseFloat(it.custoConfirmado)||0)*(parseFloat(it.qtdConferida)||0);},0);
+
+  // Cabeçalho
+  var header = '<table style="width:100%;border-collapse:collapse;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #1b2f4e"><tr>'
+    +'<td style="vertical-align:middle"><img src="'+LOGO_DARK+'" style="height:38px;width:auto" alt="Totali"><br>'
+    +'<span style="font-size:14pt;font-weight:700;color:#0D1F3C;font-family:Georgia,serif">'+esc(emp.razaoSocial||'Totali Precify')+'</span><br>'
+    +'<span style="font-size:8pt;color:#555">CNPJ: '+cnpjFmt+'</span></td>'
+    +'<td style="text-align:right;vertical-align:top"><div style="font-size:9pt;color:#555">Emitido em: '+dataHoje+'</div>'
+    +'<div style="font-size:8pt;color:'+(c.status==='divergente'?'#991b1b':'#16a34a')+';margin-top:3px;font-weight:700">Status: '+stLabel+'</div></td></tr></table>';
+
+  // Info da NF / Fornecedor
+  var infoConf = '<table style="width:100%;border-collapse:collapse;margin-bottom:14px">'
+    +'<tr><td colspan="4" style="background:#1b2f4e;color:#E8B963;padding:9px 14px;font-size:11pt;font-weight:700;letter-spacing:.3px">CONFERÊNCIA '+(c.notaFiscalNum?'— NF-'+esc(c.notaFiscalNum):'— MANUAL')+'</td></tr>'
+    +'<tr style="background:#eef2f7">'
+    +'<td style="padding:6px 12px;font-size:9pt;color:#444;border:1px solid #E5E7EB;width:50%"><b>Fornecedor:</b><br>'+esc(forn.razaoSocial||'—')+(fornCNPJ?'<br>CNPJ: '+fornCNPJ:'')+'</td>'
+    +'<td style="padding:6px 12px;font-size:9pt;color:#444;border:1px solid #E5E7EB"><b>Data conferência:</b><br>'+(c.dataConferencia||'—')+'</td>'
+    +'<td style="padding:6px 12px;font-size:9pt;color:#444;border:1px solid #E5E7EB"><b>Tipo:</b><br>'+(c.tipo==='xml'?'Importação XML':'Manual')+'</td>'
+    +'<td style="padding:6px 12px;font-size:9pt;color:#444;border:1px solid #E5E7EB"><b>Pedido vinculado:</b><br>'+(pedVinc?esc(pedVinc.numero||'—'):'—')+'</td></tr>'
+    +'</table>';
+
+  // Tabela de itens
+  var itensHtml = itensList.map(function(it, i){
+    var bg = i%2===0 ? '#ffffff' : '#f9fafb';
+    var temDiv = it.divergenciaQtd || it.divergenciaPreco;
+    var bgStatus = temDiv ? '#fef2f2' : bg;
+    var refQtd = it.qtdPedida > 0 ? it.qtdPedida : (it.qtdNF || 0);
+    var refCusto = it.custoPedido > 0 ? it.custoPedido : (it.custoNF || 0);
+    var prodVinc = (it.produtoIdx !== null && it.produtoIdx !== undefined) ? prods[it.produtoIdx] : null;
+    var difQtd = (parseFloat(it.qtdConferida)||0) - refQtd;
+    var difCusto = (parseFloat(it.custoConfirmado)||0) - refCusto;
+    var statusCell = temDiv
+      ? '<span style="color:#991b1b;font-weight:700">⚠ Div.</span>'
+      : '<span style="color:#16a34a;font-weight:700">✓ OK</span>';
+    return '<tr class="no-break" style="background:'+bgStatus+'">'
+      +'<td style="padding:6px 10px;font-size:9pt;color:#555;text-align:center;border:1px solid #E5E7EB;font-family:Courier New,monospace">'+(i+1)+'</td>'
+      +'<td style="padding:6px 10px;font-size:9.5pt;font-weight:600;color:#111;border:1px solid #E5E7EB">'+esc(it.descNF||(prodVinc?prodVinc.desc:'—'))+(prodVinc?'<br><span style="font-size:8pt;font-weight:400;color:#666">Vinc: '+esc(prodVinc.desc)+'</span>':'')+'</td>'
+      +'<td style="padding:6px 10px;font-size:9pt;color:#555;text-align:center;border:1px solid #E5E7EB">'+(it.ncm||'—')+'</td>'
+      +'<td style="padding:6px 10px;font-size:9pt;text-align:right;font-family:Courier New,monospace;color:#555;border:1px solid #E5E7EB">'+refQtd.toFixed(2)+'</td>'
+      +'<td style="padding:6px 10px;font-size:9.5pt;text-align:right;font-family:Courier New,monospace;font-weight:700;color:'+(it.divergenciaQtd?'#991b1b':'#111')+';border:1px solid #E5E7EB">'+(parseFloat(it.qtdConferida)||0).toFixed(2)+(it.divergenciaQtd?'<br><span style="font-size:8pt">('+(difQtd>0?'+':'')+difQtd.toFixed(2)+')</span>':'')+'</td>'
+      +'<td style="padding:6px 10px;font-size:9pt;text-align:right;font-family:Courier New,monospace;color:#555;border:1px solid #E5E7EB">'+fmtR(refCusto)+'</td>'
+      +'<td style="padding:6px 10px;font-size:9.5pt;text-align:right;font-family:Courier New,monospace;font-weight:700;color:'+(it.divergenciaPreco?'#991b1b':'#111')+';border:1px solid #E5E7EB">'+fmtR(it.custoConfirmado)+(it.divergenciaPreco?'<br><span style="font-size:8pt">('+(difCusto>0?'+':'')+fmtR(difCusto)+')</span>':'')+'</td>'
+      +'<td style="padding:6px 10px;font-size:9pt;text-align:center;border:1px solid #E5E7EB">'+statusCell+'</td>'
+      +'</tr>';
+  }).join('');
+
+  var tabela = '<table style="width:100%;border-collapse:collapse;margin-bottom:14px">'
+    +'<tr><td colspan="8" style="background:#1b2f4e;color:#E8B963;padding:7px 14px;font-size:9.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Itens conferidos — comparação pedido vs. entrada</td></tr>'
+    +'<tr style="background:#eef2f7">'
+    +'<th style="padding:6px 10px;font-size:9pt;color:#333;border:1px solid #E5E7EB;width:40px">#</th>'
+    +'<th style="padding:6px 10px;text-align:left;font-size:9pt;color:#333;border:1px solid #E5E7EB">Descrição</th>'
+    +'<th style="padding:6px 10px;font-size:9pt;color:#333;border:1px solid #E5E7EB">NCM</th>'
+    +'<th style="padding:6px 10px;text-align:right;font-size:9pt;color:#333;border:1px solid #E5E7EB">Qtd ref.</th>'
+    +'<th style="padding:6px 10px;text-align:right;font-size:9pt;color:#333;border:1px solid #E5E7EB">Qtd conf.</th>'
+    +'<th style="padding:6px 10px;text-align:right;font-size:9pt;color:#333;border:1px solid #E5E7EB">Custo ref.</th>'
+    +'<th style="padding:6px 10px;text-align:right;font-size:9pt;color:#333;border:1px solid #E5E7EB">Custo conf.</th>'
+    +'<th style="padding:6px 10px;font-size:9pt;color:#333;border:1px solid #E5E7EB">Status</th>'
+    +'</tr>'
+    +itensHtml
+    +'</table>';
+
+  // Resumo de stats
+  var resumo = '<table style="width:100%;border-collapse:collapse;margin-bottom:14px">'
+    +'<tr>'
+    +'<td style="width:25%;padding:10px 14px;background:#f8f9fa;border:1px solid #e5e7eb;text-align:center"><div style="font-size:8pt;color:#555;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">Total de Itens</div><div style="font-size:14pt;font-weight:700;color:#1b2f4e;font-family:Courier New,monospace">'+totalItens+'</div></td>'
+    +'<td style="width:25%;padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;text-align:center"><div style="font-size:8pt;color:#555;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">Conformes</div><div style="font-size:14pt;font-weight:700;color:#16a34a;font-family:Courier New,monospace">'+itensOk+'</div></td>'
+    +'<td style="width:25%;padding:10px 14px;background:'+(itensDiv>0?'#fef2f2':'#f8f9fa')+';border:1px solid '+(itensDiv>0?'#fca5a5':'#e5e7eb')+';text-align:center"><div style="font-size:8pt;color:#555;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">Divergentes</div><div style="font-size:14pt;font-weight:700;color:'+(itensDiv>0?'#991b1b':'#1b2f4e')+';font-family:Courier New,monospace">'+itensDiv+'</div></td>'
+    +'<td style="width:25%;padding:10px 14px;background:#1b2f4e;border:1px solid #1b2f4e;text-align:center"><div style="font-size:8pt;color:#E8B963;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">Valor total</div><div style="font-size:14pt;font-weight:700;color:#4ade80;font-family:Courier New,monospace">'+fmtR(totalNF)+'</div></td>'
+    +'</tr></table>';
+
+  // Banner de divergência se aplicável (puxa do pedido vinculado, se houver)
+  var divBanner = '';
+  if(c.status === 'divergente' && pedVinc && pedVinc.justificativaDivergencia){
+    divBanner = '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;padding:10px 14px;margin-bottom:14px"><div style="font-size:10pt;font-weight:700;color:#991b1b;margin-bottom:4px">⚠ Divergências identificadas</div><div style="font-size:9pt;color:#555;line-height:1.5">Justificativa registrada: '+esc(pedVinc.justificativaDivergencia)+'</div></div>';
+  } else if(c.status === 'divergente'){
+    divBanner = '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;padding:10px 14px;margin-bottom:14px"><div style="font-size:10pt;font-weight:700;color:#991b1b">⚠ Conferência com divergências — veja detalhes na tabela abaixo</div></div>';
+  }
+
+  var footer = '<table style="width:100%;margin-top:30px;border-collapse:collapse"><tr>'
+    +'<td style="width:45%;text-align:center;padding-top:20px;border-top:1px solid #333;font-size:10px;font-weight:700">'+esc(emp.razaoSocial||'Empresa')+'<br><span style="font-weight:400;color:#555;font-size:9px">Responsável pela conferência</span></td>'
+    +'<td style="width:10%"></td>'
+    +'<td style="width:45%;text-align:center;padding-top:20px;border-top:1px solid #333;font-size:10px;font-weight:700">Totali Precify<br><span style="font-weight:400;color:#555;font-size:9px">Sistema de conferência de mercadorias</span></td></tr>'
+    +'<tr><td colspan="3" style="padding-top:16px;font-size:9px;color:#888;text-align:center">Gerado por Totali Precify &middot; totalicontabilidade.com.br &middot; '+dataHoje+'</td></tr></table>';
+
+  return '<div style="font-family:Arial,Helvetica,sans-serif;color:#111;font-size:10pt;line-height:1.5">'
+    +'<div style="text-align:center;margin-bottom:12px"><div style="font-size:13pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#1b2f4e">RELATÓRIO DE CONFERÊNCIA</div>'
+    +'<div style="font-size:9pt;color:#555;margin-top:2px">'+(c.notaFiscalNum?'NF-'+esc(c.notaFiscalNum):'Conferência manual')+' &middot; '+(c.dataConferencia||'—')+'</div></div>'
+    +header
+    +infoConf
+    +divBanner
+    +resumo
+    +tabela
+    +footer+'</div>';
+}
+
 function fecharPreviewPDF(){
   var el=document.getElementById('pdf-preview-backdrop');
   if(el) el.remove();
@@ -397,6 +638,13 @@ function imprimirListaFormacao(){
 
 
 
+// ══════════════════════════════════════════════════════════
+// UTILITÁRIOS GLOBAIS DE IMPRESSÃO (compartilhados por todos os relatórios)
+// ══════════════════════════════════════════════════════════
+var LOGO_DARK='data:image/png;base64,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9vZ2NDU1Fd2/fz+kKAEAAJCAKJehe2lp6UYcx4GkwPO8sjqT1/04jn/6Ic/z1PvvrlKppDiOtbS01A3iYRzHLUmtOI6fPnz4sEW9AQAAwAheD/rm1taWM28kjuOfOhAHJK15npfE63aDe6Ub1JeWliJJLUmNdrv9mBAOAACAPQzMi2/fvnXmjXieF/aG7jT56ixuXimVSlpaWgrjOG6USqXbTEkBAADADkJ1ppj4O30ziiJn3ki73f6pA5H1jZSB53nLcRxvLi0tbVy5cuUa9QoAAAC9uVoDRrv/85//OPNG3r59+3RSobtXxfO8+tLS0uaJEyfK1C8AAAAYjd2+8ebNG71588b6NxDHcaPRaEQ2hO6u4OTJk+UgCHTs2DGqGAAAAO5qwComm5ubznUcrFmne3p6Wr/4xS/0q1/9SgcOHKCqAQAAFFckaW23bz5//tz2GyrDBw8e3O39H9al24MHD2pubk7//e9/9f3331PlAMBNFUk23LdznUMBOOu2pGXtcEPl1taWvvnmG50/f97KHY/juNb//6wdUj5x4oSOHTumb7/9Vj/++CPVDgDcEkiqEroB7ENk2vBXO33z+fPnmpub05EjR2zb73r/KLdk+WPgp6endfbsWRsLEwAAAOlrSKrt9I2trS399a9/tW2aSeh53upO37B+8vT09LQ++ugjppugCAJ1PpK3QUs5fQwvAMA5q5LmtMOUtVevXunJkyf67LPPbNjPaGpq6vK9e/dCJ0N314kTJySJ4O2gL774ory9vX1joq0givw///nPthdVVXZ8HC8T/h9TewEAFl0jX6kzx/s9m5ubOnz48MTnd8dxvHzv3r3Wbt93apkQgreb2u22P+kwOT09zYEAAMBtN9X5FLbW/41//etfevv2rebn5yexX1G73V58+PDhwMGqkmulfeLECZ08eZJqBwAAUDzdqSZh/zeePXumv/zlL5k+OCeO45bnefN7BW4nQ3c3ePu+T7UDAAAontAE7+v94fvVq1fa2NjI4uE5URzHtQcPHszfv38/HOYXSq6W9qlTp3To0CGqHQAAQDHVTfheNP8dSZ3HxH/99df64x//mFb4rnueN//gwYPVUX7J6Uc/nj59Wv/+97/VbrepdgAAAMX0yGzXJX0uqSwpePPmTfD111/733zzjX7729/q+PHjgTorhY0jjOO4vrW1dbvR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';
+function fmtR(v){return 'R$ '+parseFloat(v||0).toFixed(2).replace('.',',');}
+function fmtP(v){return parseFloat(v||0).toFixed(2).replace('.',',')+'%';}
+
 function buildRelatorioHTML(lista){
 var emp=curEmpresa||{};
 var cnpjFmt=emp.cnpj?fCNPJ(emp.cnpj):'';
@@ -404,9 +652,6 @@ var regime=getRegime();
 var regLabel=regime==='simples'?'Simples Nacional':regime==='presumido'?'Lucro Presumido':regime==='real'?'Lucro Real':'Nao configurado';
 var dataHoje=new Date().toLocaleDateString('pt-BR');
 var com=_pdfParams.com,frtS=_pdfParams.frtS,tax=_pdfParams.tax,mrg=_pdfParams.mrg;
-var LOGO_DARK='data:image/png;base64,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9vZ2NDU1Fd2/fz+kKAEAAJCAKJehe2lp6UYcx4GkwPO8sjqT1/04jn/6Ic/z1PvvrlKppDiOtbS01A3iYRzHLUmtOI6fPnz4sEW9AQAAwAheD/rm1taWM28kjuOfOhAHJK15npfE63aDe6Ub1JeWliJJLUmNdrv9mBAOAACAPQzMi2/fvnXmjXieF/aG7jT56ixuXimVSlpaWgrjOG6USqXbTEkBAADADkJ1ppj4O30ziiJn3ki73f6pA5H1jZSB53nLcRxvLi0tbVy5cuUa9QoAAAC9uVoDRrv/85//OPNG3r59+3RSobtXxfO8+tLS0uaJEyfK1C8AAAAYjd2+8ebNG71588b6NxDHcaPRaEQ2hO6u4OTJk+UgCHTs2DGqGAAAAO5qwComm5ubznUcrFmne3p6Wr/4xS/0q1/9SgcOHKCqAQAAFFckaW23bz5//tz2GyrDBw8e3O39H9al24MHD2pubk7//e9/9f3331PlAMBNFUk23LdznUMBOOu2pGXtcEPl1taWvvnmG50/f97KHY/juNb//6wdUj5x4oSOHTumb7/9Vj/++CPVDgDcEkiqEroB7ENk2vBXO33z+fPnmpub05EjR2zb73r/KLdk+WPgp6endfbsWRsLEwAAAOlrSKrt9I2trS399a9/tW2aSeh53upO37B+8vT09LQ++ugjppugCAJ1PpK3QUs5fQwvAMA5q5LmtMOUtVevXunJkyf67LPPbNjPaGpq6vK9e/dCJ0N314kTJySJ4O2gL774ory9vX1joq0givw///nPthdVVXZ8HC8T/h9TewEAFl0jX6kzx/s9m5ubOnz48MTnd8dxvHzv3r3Wbt93apkQgreb2u22P+kwOT09zYEAAMBtN9X5FLbW/41//etfevv2rebn5yexX1G73V58+PDhwMGqkmulfeLECZ08eZJqBwAAUDzdqSZh/zeePXumv/zlL5k+OCeO45bnefN7BW4nQ3c3ePu+T7UDAAAontAE7+v94fvVq1fa2NjI4uE5URzHtQcPHszfv38/HOYXSq6W9qlTp3To0CGqHQAAQDHVTfheNP8dSZ3HxH/99df64x//mFb4rnueN//gwYPVUX7J6Uc/nj59Wv/+97/VbrepdgAAAMX0yGzXJX0uqSwpePPmTfD111/733zzjX7729/q+PHjgTorhY0jjOO4vrW1dbvR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';
-function fmtR(v){return 'R$ '+parseFloat(v||0).toFixed(2).replace('.',',');}
-function fmtP(v){return parseFloat(v||0).toFixed(2).replace('.',',')+'%';}
 var _zebra=0;
 function dRow(l,v,b,ind){var bg=(_zebra++%2===0)?'#ffffff':'#f9fafb';return '<tr class="no-break" style="background:'+bg+'"><td style="padding:6px 14px 6px '+(ind?'28px':'14px')+';font-size:10pt;color:#111;'+(b?'font-weight:700;':'font-weight:400;')+'border:1px solid #E5E7EB">'+l+'</td><td style="padding:6px 14px;font-size:10pt;color:#111;text-align:right;font-family:Courier New,monospace;'+(b?'font-weight:700;':'font-weight:500;')+'border:1px solid #E5E7EB">'+v+'</td></tr>';}
 function totRow(l,v){return '<tr class="no-break" style="background:#F5EDD8"><td style="padding:8px 14px;font-size:10.5pt;font-weight:700;color:#111;border:1px solid #E5D5A8">'+l+'</td><td style="padding:8px 14px;font-size:10.5pt;font-weight:700;color:#111;text-align:right;font-family:Courier New,monospace;border:1px solid #E5D5A8">'+v+'</td></tr>';}
@@ -604,6 +849,7 @@ function rConfLista(lista, isPend){
         +'<button class="btn xs p" data-idx="'+realIdx+'" onclick="abrirConf(this)">Ver</button>'
         +(c.status!=='conferido' && canEditData()?'<button class="btn xs g" data-idx="'+realIdx+'" onclick="reabrirConf('+realIdx+')">Retomar</button>':'')
         +(c.status==='conferido' && isAdmin()?'<button class="btn xs" onclick="editarConferencia('+realIdx+')" title="Reabrir para edição">✎ Editar</button>':'')
+        +'<button class="btn xs" onclick="imprimirConferencia('+realIdx+')" title="Imprimir">🖨</button>'
         +(isAdmin()?'<button class="btn xs d" onclick="excluirConferencia('+realIdx+')" title="Excluir conferência">× Excluir</button>':'')
         +'</td></tr>';
     }).join('')+'</table></div></div>';
@@ -737,7 +983,38 @@ function confProx(){
     _confStep=1;
   } else if(_confStep===1){
     _confStep=2;
-    if(_confTipo==='manual'&&!_confItens.length){
+    // Se tem pedido vinculado E itens ainda vazios, puxa os itens do pedido agora
+    // (caso o usuário tenha selecionado o pedido mas vincularPedConf não rodou por algum motivo)
+    if(_confPedidoIdx >= 0 && _confItens.length === 0){
+      var pedVinc = ((curEmpresa&&curEmpresa.pedidos)||[])[_confPedidoIdx];
+      if(pedVinc && pedVinc.itens && pedVinc.itens.length > 0){
+        _confItens = pedVinc.itens.map(function(pi){
+          var prodP = (pi.produtoId !== undefined && pi.produtoId !== '' && pi.produtoId !== null) ? prods[pi.produtoId] : null;
+          return {
+            descNF: pi.descPedido || (prodP ? prodP.desc : ''),
+            ncm: prodP ? (prodP.ncm || '') : '',
+            cean: prodP ? (prodP.cEAN || '') : '',
+            cprod: prodP ? (prodP.codigoInt || '') : '',
+            unidade: 'UN',
+            qtdPedida: parseFloat(pi.qtd) || 0,
+            qtdNF: parseFloat(pi.qtd) || 0,
+            qtdConferida: parseFloat(pi.qtd) || 0,
+            custoPedido: parseFloat(pi.custoUnitPedido) || 0,
+            custoNF: parseFloat(pi.custoUnitPedido) || 0,
+            custoConfirmado: parseFloat(pi.custoUnitPedido) || 0,
+            vST: 0, vIPI: 0,
+            produtoIdx: (pi.produtoId !== undefined && pi.produtoId !== '' && pi.produtoId !== null) ? pi.produtoId : null,
+            produtoIdxSugerido: (pi.produtoId !== undefined && pi.produtoId !== '' && pi.produtoId !== null) ? pi.produtoId : null,
+            produtoMatch: prodP ? 'vinculado' : 'novo',
+            divergenciaQtd: false,
+            divergenciaPreco: false,
+            statusItem: 'pendente'
+          };
+        });
+      }
+    }
+    // Se entrada manual SEM pedido vinculado e ainda vazia, cria um item em branco
+    if(_confTipo==='manual' && !_confItens.length){
       _confItens=[{descNF:'',ncm:'',cean:'',cprod:'',unidade:'UN',
         qtdNF:1,qtdPedida:0,qtdConferida:1,
         custoNF:0,custoPedido:0,custoConfirmado:0,
@@ -756,10 +1033,17 @@ function rConfStep1(){
   var pedOpts=pedEnviados.map(function(p,i){
     var forn=fornecedores.find(function(f){return f.id===p.fornecedorId;});
     var realIdx=((curEmpresa&&curEmpresa.pedidos)||[]).indexOf(p);
-    return'<option value="'+realIdx+'">'+esc(p.numero||'PED-'+(i+1))+' — '+(forn?esc(forn.razaoSocial):p.fornecedorId)+' ('+p.dataEmissao+')</option>';
+    var totalItens = (p.itens||[]).length;
+    return'<option value="'+realIdx+'">'+esc(p.numero||'PED-'+(i+1))+' — '+(forn?esc(forn.razaoSocial):p.fornecedorId)+' ('+p.dataEmissao+') · '+totalItens+' itens</option>';
   }).join('');
+  var aviso = pedEnviados.length === 0
+    ? '<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:6px;padding:8px 11px;font-size:10px;color:var(--warn);margin-bottom:10px;line-height:1.5">⚠ Nenhum pedido em rascunho ou enviado disponível. A conferência será manual, sem cruzamento com pedido.</div>'
+    : '';
   return'<div class="card"><div class="ct">Passo 2 — Vincular pedido (opcional)</div>'
-    +'<div style="font-size:10px;color:var(--t2);margin-bottom:10px">Se esta entrada corresponde a um pedido enviado, selecione-o para cruzar as informações.</div>'
+    +'<div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25);border-radius:6px;padding:8px 11px;font-size:10px;color:var(--t2);margin-bottom:10px;line-height:1.5">'
+    +'<b style="color:var(--gold2)">Dica:</b> ao selecionar um pedido, os <b>itens serão carregados automaticamente</b> na próxima tela, com as quantidades e custos como referência. Você só precisa ajustar o que veio diferente.'
+    +'</div>'
+    +aviso
     +'<div class="f" style="margin-bottom:10px"><label>Pedido de compra</label>'
     +'<select id="conf-ped" onchange="vincularPedConf(this.value)">'
     +'<option value="">Sem pedido vinculado</option>'+pedOpts+'</select></div>'
@@ -2883,6 +3167,7 @@ function rPedidos(){
         +'<button class="btn xs p" onclick="abrirPedido('+i+')">Abrir</button>'
         +(podeEditar?'<button class="btn xs" onclick="editarPedido('+i+')">Editar</button>':'')
         +(p.status==='enviado'?'<button class="btn xs g" onclick="registrarEntrada('+i+')">Entrada</button>':'')
+        +'<button class="btn xs" onclick="imprimirPedido('+i+')" title="Imprimir">🖨</button>'
         +(p.statusConferencia==='divergente'?'<button class="btn xs" onclick="verJustificativa('+i+')" title="Ver justificativa">Justif.</button>':'')
         +(isAdmin()?'<button class="btn xs d" onclick="excluirPedido('+i+')" title="Excluir pedido">× Excluir</button>':'')
         +'</td></tr>';
@@ -3351,6 +3636,7 @@ function abrirPedido(i){
     +(ped.status==='rascunho' && canEditData() ?'<button class="btn p" onclick="enviarPedido('+i+')">Marcar como Enviado</button>':'')
     +(ped.status==='enviado' && canEditData() ?'<button class="btn g" onclick="clsOv(\'pedov\');registrarEntrada('+i+')">Registrar entrada</button>':'')
     +(podeEditar?'<button class="btn" onclick="clsOv(\'pedov\');editarPedido('+i+')">✎ Editar</button>':'')
+    +'<button class="btn" onclick="clsOv(\'pedov\');imprimirPedido('+i+')">🖨 Imprimir</button>'
     +(isAdmin()?'<button class="btn d" onclick="clsOv(\'pedov\');excluirPedido('+i+')">× Excluir</button>':'')
     +'<button class="btn" onclick="clsOv(\'pedov\')">Fechar</button></div></div>';
   document.body.appendChild(ov);
