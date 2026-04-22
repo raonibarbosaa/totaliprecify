@@ -600,11 +600,11 @@ function rConfLista(lista, isPend){
         +'<td style="text-align:center">'+(c.itens||[]).length+(diverg>0?'<span style="color:var(--danger)"> ('+diverg+'⚠)</span>':'')+'</td>'
         +'<td style="font-family:var(--mono)">'+fR(c.totais&&c.totais.vNF||0)+'</td>'
         +'<td>'+stBadge+'</td>'
-        +'<td style="display:flex;gap:4px">'
+        +'<td style="display:flex;gap:4px;flex-wrap:wrap;min-width:160px">'
         +'<button class="btn xs p" data-idx="'+realIdx+'" onclick="abrirConf(this)">Ver</button>'
         +(c.status!=='conferido' && canEditData()?'<button class="btn xs g" data-idx="'+realIdx+'" onclick="reabrirConf('+realIdx+')">Retomar</button>':'')
-        +(c.status==='conferido' && isAdmin()?'<button class="btn xs" onclick="editarConferencia('+realIdx+')" title="Reabrir para edição (admin)">✎</button>':'')
-        +(isAdmin()?'<button class="btn xs d" onclick="excluirConferencia('+realIdx+')" title="Excluir conferência (admin)">×</button>':'')
+        +(c.status==='conferido' && isAdmin()?'<button class="btn xs" onclick="editarConferencia('+realIdx+')" title="Reabrir para edição">✎ Editar</button>':'')
+        +(isAdmin()?'<button class="btn xs d" onclick="excluirConferencia('+realIdx+')" title="Excluir conferência">× Excluir</button>':'')
         +'</td></tr>';
     }).join('')+'</table></div></div>';
 }
@@ -2388,10 +2388,60 @@ async function inviteMember(){
     curEmpresa.convitesPendentes = convites;
     curEmpresa.convitesEmails = emailsArr;
     emailEl.value='';
-    toast('Convite enviado! Quando '+email+' logar, será adicionado.');
     ren();
+    // Abre modal com mensagem pronta para o admin compartilhar
+    mostrarConviteSalvo(email, role);
   } catch(e){
     toast('Erro: '+e.message);
+  }
+}
+
+function mostrarConviteSalvo(email, role){
+  var nomeEmp = curEmpresa.razaoSocial || 'a empresa';
+  var siteURL = 'https://precify.totalicontabilidade.com.br';
+  var roleNome = role === 'admin' ? 'Administrador' : 'Editor';
+  var mensagem = 'Olá! Você foi convidado(a) para acessar o sistema Totali Precify da '+nomeEmp+' como '+roleNome+'.\n\n'
+    +'1) Acesse: '+siteURL+'\n'
+    +'2) Clique em "Esqueci minha senha" e informe o seu e-mail: '+email+'\n'
+    +'3) Após criar a senha, faça login — você entrará automaticamente na empresa.\n\n'
+    +'Em caso de dúvidas, estou à disposição.';
+  var mensagemEncodada = encodeURIComponent(mensagem);
+  var assuntoEmail = encodeURIComponent('Convite — Totali Precify — '+nomeEmp);
+
+  var ov=document.createElement('div');ov.className='overlay';ov.id='invsav';
+  ov.innerHTML='<div class="modal">'
+    +'<div class="mt2">✅ Convite salvo</div>'
+    +'<div class="ms2">Avise '+esc(email)+' para criar a conta e entrar automaticamente.</div>'
+    +'<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:6px;padding:10px 12px;font-size:10px;color:var(--t2);margin-bottom:12px;line-height:1.5">'
+    +'<b style="color:var(--warn)">⚠ Importante:</b> o sistema <b>não envia e-mail automático</b>. Use os botões abaixo para enviar as instruções pela plataforma de sua escolha. Quando a pessoa criar conta com o e-mail informado, ela será vinculada automaticamente.'
+    +'</div>'
+    +'<div class="card" style="margin-bottom:10px"><div class="ct">Mensagem pronta para compartilhar</div>'
+    +'<textarea id="invmsg" readonly style="width:100%;min-height:130px;background:var(--bg3);border:1px solid var(--bdr2);color:var(--text);border-radius:6px;padding:10px;font-size:11px;font-family:var(--sans);resize:vertical;line-height:1.5">'+esc(mensagem)+'</textarea>'
+    +'</div>'
+    +'<div class="btns" style="flex-wrap:wrap;gap:6px">'
+    +'<button class="btn p" onclick="copiarMensagemConvite()">📋 Copiar mensagem</button>'
+    +'<button class="btn g" onclick="window.open(\'https://wa.me/?text='+mensagemEncodada+'\',\'_blank\')">💬 WhatsApp</button>'
+    +'<button class="btn" onclick="window.open(\'mailto:'+esc(email)+'?subject='+assuntoEmail+'&body='+mensagemEncodada+'\',\'_blank\')">📧 E-mail</button>'
+    +'<button class="btn" onclick="clsOv(\'invsav\')">Fechar</button>'
+    +'</div></div>';
+  document.body.appendChild(ov);
+}
+
+function copiarMensagemConvite(){
+  var txt = document.getElementById('invmsg');
+  if(!txt) return;
+  txt.select();
+  txt.setSelectionRange(0, 99999); // mobile
+  try {
+    navigator.clipboard.writeText(txt.value).then(function(){
+      toast('Mensagem copiada!');
+    }, function(){
+      document.execCommand('copy');
+      toast('Mensagem copiada!');
+    });
+  } catch(e){
+    try { document.execCommand('copy'); toast('Mensagem copiada!'); }
+    catch(e2){ toast('Não foi possível copiar — selecione manualmente.'); }
   }
 }
 
@@ -2722,12 +2772,12 @@ function rPedidos(){
         +'<td>'+fR(total)+'</td>'
         +'<td><span class="badge '+stCls+'">'+stLabel+'</span></td>'
         +'<td>'+(confCls?'<span class="badge '+confCls+'">'+confIcon+confLabel+'</span>':'<span style="font-size:9px;color:var(--t3)">—</span>')+'</td>'
-        +'<td style="display:flex;gap:4px;flex-wrap:wrap">'
+        +'<td style="display:flex;gap:4px;flex-wrap:wrap;min-width:180px">'
         +'<button class="btn xs p" onclick="abrirPedido('+i+')">Abrir</button>'
         +(podeEditar?'<button class="btn xs" onclick="editarPedido('+i+')">Editar</button>':'')
         +(p.status==='enviado'?'<button class="btn xs g" onclick="registrarEntrada('+i+')">Entrada</button>':'')
         +(p.statusConferencia==='divergente'?'<button class="btn xs" onclick="verJustificativa('+i+')" title="Ver justificativa">Justif.</button>':'')
-        +(isAdmin()?'<button class="btn xs d" onclick="excluirPedido('+i+')" title="Excluir pedido (admin)">×</button>':'')
+        +(isAdmin()?'<button class="btn xs d" onclick="excluirPedido('+i+')" title="Excluir pedido">× Excluir</button>':'')
         +'</td></tr>';
     }).join('')+'</table></div></div>')+'</div>'
     +'<div id="pdf2" style="display:none">'+bPedForm()+'</div>';
