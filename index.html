@@ -780,24 +780,57 @@ function vincularPedConf(val){
   if(_confPedidoIdx<0){prev.innerHTML='';return;}
   var ped=((curEmpresa&&curEmpresa.pedidos)||[])[_confPedidoIdx];
   if(!ped){prev.innerHTML='';return;}
-  // Cruzar itens do pedido com itens da conferência
-  _confItens.forEach(function(ci){
-    ped.itens.forEach(function(pi){
-      var prodP=pi.produtoId!==undefined&&pi.produtoId!==''?prods[pi.produtoId]:null;
-      var match=false;
-      if(ci.produtoIdx!==null&&ci.produtoIdx===pi.produtoId)match=true;
-      if(!match&&prodP&&similaridade(ci.descNF,prodP.desc)>=0.7)match=true;
-      if(match){
-        ci.qtdPedida=pi.qtd||0;
-        ci.custoPedido=pi.custoUnitPedido||0;
-        ci.divergenciaQtd=Math.abs(ci.qtdNF-ci.qtdPedida)>0.001;
-        ci.divergenciaPreco=ci.custoPedido>0?Math.abs((ci.custoNF-ci.custoPedido)/ci.custoPedido)>0.02:false;
-      }
+
+  // Se conferência está vazia (manual sem XML), pré-popula com itens do pedido
+  if(_confItens.length === 0 && ped.itens && ped.itens.length > 0){
+    _confItens = ped.itens.map(function(pi){
+      var prodP = (pi.produtoId !== undefined && pi.produtoId !== '' && pi.produtoId !== null) ? prods[pi.produtoId] : null;
+      return {
+        descNF: pi.descPedido || (prodP ? prodP.desc : ''),
+        ncm: prodP ? (prodP.ncm || '') : '',
+        cean: prodP ? (prodP.cEAN || '') : '',
+        cprod: prodP ? (prodP.codigoInt || '') : '',
+        unidade: 'UN',
+        // quantidade: referência do pedido, conferida inicia igual (o usuario altera se diferente)
+        qtdPedida: parseFloat(pi.qtd) || 0,
+        qtdNF: parseFloat(pi.qtd) || 0,
+        qtdConferida: parseFloat(pi.qtd) || 0,
+        // custo: referência do pedido, conferido inicia igual
+        custoPedido: parseFloat(pi.custoUnitPedido) || 0,
+        custoNF: parseFloat(pi.custoUnitPedido) || 0,
+        custoConfirmado: parseFloat(pi.custoUnitPedido) || 0,
+        vST: 0, vIPI: 0,
+        produtoIdx: (pi.produtoId !== undefined && pi.produtoId !== '' && pi.produtoId !== null) ? pi.produtoId : null,
+        produtoIdxSugerido: (pi.produtoId !== undefined && pi.produtoId !== '' && pi.produtoId !== null) ? pi.produtoId : null,
+        produtoMatch: prodP ? 'vinculado' : 'novo',
+        divergenciaQtd: false,
+        divergenciaPreco: false,
+        statusItem: 'pendente'
+      };
     });
-  });
+  } else {
+    // Se já tem itens (veio de XML), faz o cruzamento para preencher qtdPedida/custoPedido nos que combinarem
+    _confItens.forEach(function(ci){
+      ped.itens.forEach(function(pi){
+        var prodP=(pi.produtoId!==undefined && pi.produtoId!=='' && pi.produtoId!==null)?prods[pi.produtoId]:null;
+        var match=false;
+        if(ci.produtoIdx!==null&&ci.produtoIdx===pi.produtoId)match=true;
+        if(!match&&prodP&&similaridade(ci.descNF,prodP.desc)>=0.7)match=true;
+        if(match){
+          ci.qtdPedida=parseFloat(pi.qtd)||0;
+          ci.custoPedido=parseFloat(pi.custoUnitPedido)||0;
+          // Sincroniza flags de divergência usando a nova lógica
+          var refQtd = ci.qtdPedida > 0 ? ci.qtdPedida : (ci.qtdNF || 0);
+          var refCusto = ci.custoPedido > 0 ? ci.custoPedido : (ci.custoNF || 0);
+          ci.divergenciaQtd = refQtd > 0 && Math.abs((parseFloat(ci.qtdConferida)||0) - refQtd) > 0.001;
+          ci.divergenciaPreco = refCusto > 0 && Math.abs((parseFloat(ci.custoConfirmado)||0) - refCusto) > 0.001;
+        }
+      });
+    });
+  }
   prev.innerHTML='<div style="background:var(--bg3);border-radius:7px;padding:10px;font-size:10px">'
     +'<span style="color:var(--gold2);font-weight:700">'+esc(ped.numero||'PED')+'</span>'
-    +' vinculado — '+ped.itens.length+' item(ns) no pedido</div>';
+    +' vinculado — '+ped.itens.length+' item(ns) carregado(s) do pedido. Ajuste as quantidades e custos conforme a entrada real.</div>';
 }
 
 function rConfStep2(){
@@ -814,9 +847,9 @@ function rConfStep2(){
   var itensDiv = _confItens.filter(function(ci){return ci.divergenciaQtd || ci.divergenciaPreco;}).length;
   var header = '<div class="g4" style="margin-bottom:12px">'
     +'<div class="stat"><div class="sv svd">'+totalItens+'</div><div class="sl">Total de itens</div></div>'
-    +'<div class="stat"><div class="sv svg2">'+itensOk+'</div><div class="sl">Conforme</div></div>'
-    +'<div class="stat"><div class="sv svr">'+itensDiv+'</div><div class="sl">Divergentes</div></div>'
-    +'<div class="stat"><div class="sv svy">'+Math.round(totalItens>0?(itensOk/totalItens)*100:0)+'%</div><div class="sl">Progresso</div></div>'
+    +'<div class="stat"><div class="sv svg2" id="conf-stat-conforme">'+itensOk+'</div><div class="sl">Conforme</div></div>'
+    +'<div class="stat"><div class="sv svr" id="conf-stat-div">'+itensDiv+'</div><div class="sl">Divergentes</div></div>'
+    +'<div class="stat"><div class="sv svy" id="conf-stat-pct">'+Math.round(totalItens>0?(itensOk/totalItens)*100:0)+'%</div><div class="sl">Progresso</div></div>'
     +'</div>';
 
   // Layout em cards: cada item vira um card com 3 colunas lado a lado (Pedido/NF | Conferido | Divergência)
@@ -834,7 +867,7 @@ function rConfStep2(){
     var prodAtual=ci.produtoIdx!==null?prods[ci.produtoIdx]:null;
     var statusColor = (divQtd||divPrc) ? 'rgba(239,68,68,.08)' : 'var(--bg3)';
     var statusBorder = (divQtd||divPrc) ? 'rgba(239,68,68,.3)' : 'var(--border)';
-    var statusIcon = (divQtd||divPrc) ? '<span style="color:var(--danger);font-size:16px">⚠</span>' : '<span style="color:var(--green);font-size:16px">✓</span>';
+    var statusIcon = '<span class="conf-icon">' + ((divQtd||divPrc) ? '<span style="color:var(--danger);font-size:16px">⚠</span>' : '<span style="color:var(--green);font-size:16px">✓</span>') + '</span>';
 
     // Coluna NF/Pedido
     var colNF = '<div style="background:var(--bg2);border-radius:5px;padding:8px 10px">'
@@ -875,7 +908,7 @@ function rConfStep2(){
       difTxt = '<div style="font-size:11px;color:var(--green);font-weight:700">✓ Conforme</div>'
         +'<div style="font-size:9px;color:var(--t3);margin-top:3px">'+(ci.qtdPedida>0?'Pedido e entrada batem':'Entrada bate com NF')+'</div>';
     }
-    var colDiv = '<div style="background:'+((divQtd||divPrc)?'rgba(239,68,68,.05)':'rgba(16,185,129,.05)')+';border:1px solid '+((divQtd||divPrc)?'rgba(239,68,68,.25)':'rgba(16,185,129,.25)')+';border-radius:5px;padding:8px 10px">'
+    var colDiv = '<div class="conf-div-col" style="background:'+((divQtd||divPrc)?'rgba(239,68,68,.05)':'rgba(16,185,129,.05)')+';border:1px solid '+((divQtd||divPrc)?'rgba(239,68,68,.25)':'rgba(16,185,129,.25)')+';border-radius:5px;padding:8px 10px">'
       +'<div style="font-size:8px;font-weight:700;color:var(--t3);letter-spacing:.5px;text-transform:uppercase;margin-bottom:5px">Divergência</div>'
       +difTxt
       +'</div>';
@@ -911,11 +944,64 @@ function rConfStep2(){
 
 // atualiza apenas 1 item apos edicao (evita re-render da pagina inteira)
 function confRefreshItem(ii){
+  // Atualiza APENAS as partes visuais que mudam, sem mexer nos inputs
+  // (não pode usar innerHTML=rConfNova() porque destroi o foco do input)
+  var ci = _confItens[ii];
+  if(!ci) return;
   var container = document.getElementById('conf-item-'+ii);
   if(!container) return;
-  // Re-renderiza a pagina inteira — eh mais simples e garante sincronismo com as stats do topo
-  var el = document.getElementById('conf-nova');
-  if(el) el.innerHTML = rConfNova();
+
+  var refQtd = ci.qtdPedida > 0 ? ci.qtdPedida : (ci.qtdNF || 0);
+  var refCusto = ci.custoPedido > 0 ? ci.custoPedido : (ci.custoNF || 0);
+  var qtdConfVal = parseFloat(ci.qtdConferida) || 0;
+  var custoConfVal = parseFloat(ci.custoConfirmado) || 0;
+  var divQtd = ci.divergenciaQtd;
+  var divPrc = ci.divergenciaPreco;
+  var temDiv = divQtd || divPrc;
+
+  // 1. Atualiza a cor e o ícone do card
+  container.style.background = temDiv ? 'rgba(239,68,68,.08)' : 'var(--bg3)';
+  container.style.borderColor = temDiv ? 'rgba(239,68,68,.3)' : 'var(--border)';
+  var iconEl = container.querySelector('.conf-icon');
+  if(iconEl){
+    iconEl.innerHTML = temDiv ? '<span style="color:var(--danger);font-size:16px">⚠</span>'
+      : '<span style="color:var(--green);font-size:16px">✓</span>';
+  }
+
+  // 2. Atualiza coluna Divergência
+  var divCol = container.querySelector('.conf-div-col');
+  if(divCol){
+    var difTxt = '';
+    if(divQtd){
+      var dq = qtdConfVal - refQtd;
+      difTxt += '<div style="font-size:10px;color:var(--danger);font-weight:700;margin-bottom:3px">⚠ Qtd: '+(dq>0?'+':'')+dq.toFixed(2)+'</div>';
+    }
+    if(divPrc){
+      var dp = custoConfVal - refCusto;
+      var pct = refCusto>0 ? ((dp/refCusto)*100).toFixed(1) : '0';
+      difTxt += '<div style="font-size:10px;color:var(--warn);font-weight:700;margin-bottom:3px">⚠ Custo: '+(dp>0?'+':'')+fR(dp)+' ('+(dp>0?'+':'')+pct+'%)</div>';
+    }
+    if(!divQtd && !divPrc){
+      difTxt = '<div style="font-size:11px;color:var(--green);font-weight:700">✓ Conforme</div>'
+        +'<div style="font-size:9px;color:var(--t3);margin-top:3px">'+(ci.qtdPedida>0?'Pedido e entrada batem':'Entrada bate com NF')+'</div>';
+    }
+    divCol.style.background = temDiv ? 'rgba(239,68,68,.05)' : 'rgba(16,185,129,.05)';
+    divCol.style.borderColor = temDiv ? 'rgba(239,68,68,.25)' : 'rgba(16,185,129,.25)';
+    // mantém o cabeçalho "DIVERGÊNCIA" e substitui só a parte dinâmica
+    divCol.innerHTML = '<div style="font-size:8px;font-weight:700;color:var(--t3);letter-spacing:.5px;text-transform:uppercase;margin-bottom:5px">Divergência</div>' + difTxt;
+  }
+
+  // 3. Atualiza stats do topo
+  var totalItens = _confItens.length;
+  var itensOk = _confItens.filter(function(c){return !c.divergenciaQtd && !c.divergenciaPreco;}).length;
+  var itensDiv = _confItens.filter(function(c){return c.divergenciaQtd || c.divergenciaPreco;}).length;
+  var pct = totalItens>0 ? Math.round((itensOk/totalItens)*100) : 0;
+  var statConforme = document.getElementById('conf-stat-conforme');
+  var statDiv = document.getElementById('conf-stat-div');
+  var statPct = document.getElementById('conf-stat-pct');
+  if(statConforme) statConforme.textContent = itensOk;
+  if(statDiv) statDiv.textContent = itensDiv;
+  if(statPct) statPct.textContent = pct+'%';
 }
 
 // expose _confItens globally for inline edits
