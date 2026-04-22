@@ -603,6 +603,8 @@ function rConfLista(lista, isPend){
         +'<td style="display:flex;gap:4px">'
         +'<button class="btn xs p" data-idx="'+realIdx+'" onclick="abrirConf(this)">Ver</button>'
         +(c.status!=='conferido' && canEditData()?'<button class="btn xs g" data-idx="'+realIdx+'" onclick="reabrirConf('+realIdx+')">Retomar</button>':'')
+        +(c.status==='conferido' && isAdmin()?'<button class="btn xs" onclick="editarConferencia('+realIdx+')" title="Reabrir para edição (admin)">✎</button>':'')
+        +(isAdmin()?'<button class="btn xs d" onclick="excluirConferencia('+realIdx+')" title="Excluir conferência (admin)">×</button>':'')
         +'</td></tr>';
     }).join('')+'</table></div></div>';
 }
@@ -1086,6 +1088,29 @@ function reabrirConf(idx){
   conferencias.splice(idx,1);
   confTab=2;
   go('conf');
+}
+
+function editarConferencia(idx){
+  if(!isAdmin()){toast('Apenas administradores podem editar conferências já concluídas.');return;}
+  var c=conferencias[idx];if(!c)return;
+  if(!confirm('Reabrir esta conferência para edição?\n\nA conferência será removida da lista e voltará para o modo de edição. Ao salvar novamente, os custos dos produtos vinculados serão atualizados com os novos valores.'))return;
+  // Reutiliza o fluxo de reabrir — já faz tudo (remove do array, volta para step 2)
+  reabrirConf(idx);
+  toast('Conferência reaberta — faça os ajustes e confirme novamente.');
+}
+
+async function excluirConferencia(idx){
+  if(!isAdmin()){toast('Apenas administradores podem excluir conferências.');return;}
+  var c=conferencias[idx];if(!c)return;
+  var nfLbl = c.notaFiscalNum ? 'NF-'+c.notaFiscalNum : 'conferência manual';
+  if(!confirm('Tem certeza que quer excluir esta conferência ('+nfLbl+')?\n\nATENÇÃO: os custos dos produtos atualizados por esta conferência NÃO serão revertidos automaticamente.\n\nEsta ação NÃO pode ser desfeita.'))return;
+  if(!confirm('Confirma DEFINITIVAMENTE a exclusão?'))return;
+  conferencias.splice(idx,1);
+  try {
+    await db.collection('empresas').doc(curEmpresaId).update({conferencias: conferencias});
+    toast('Conferência excluída.');
+    ren();
+  } catch(e){ toast('Erro: '+e.message); }
 }
 
 
@@ -2637,7 +2662,9 @@ var editPedIdx = -1;
 function rPedidos(){
   var pedLista=curEmpresa&&curEmpresa.pedidos?curEmpresa.pedidos:[];
   return'<div class="ptab"><button class="ptb on" id="pdtb0" onclick="stabPed(0)">Pedidos</button>'
-    +'<button class="ptb" id="pdtb1" onclick="stabPed(1)">+ Novo pedido</button></div>'
+    +'<button class="ptb" id="pdtb1" onclick="stabPed(1)">+ Novo pedido</button>'
+    +(canEditData()?'<button class="ptb" id="pdtb2" onclick="abrirCadastroRapidoAvulso()" style="border-color:rgba(16,185,129,.4);color:#4ade80">+ Cadastrar produto</button>':'')
+    +'</div>'
     +'<div id="pdl">'+(pedLista.length===0?'<div class="empty">Nenhum pedido de compra cadastrado.</div>'
     :'<div class="card"><div style="overflow-x:auto"><table>'
     +'<tr><th>Nº</th><th>Fornecedor</th><th>Data</th><th>Itens</th><th>Valor total</th><th>Status</th><th>Conferência</th><th></th></tr>'
@@ -2664,6 +2691,7 @@ function rPedidos(){
         +(podeEditar?'<button class="btn xs" onclick="editarPedido('+i+')">Editar</button>':'')
         +(p.status==='enviado'?'<button class="btn xs g" onclick="registrarEntrada('+i+')">Entrada</button>':'')
         +(p.statusConferencia==='divergente'?'<button class="btn xs" onclick="verJustificativa('+i+')" title="Ver justificativa">Justif.</button>':'')
+        +(isAdmin()?'<button class="btn xs d" onclick="excluirPedido('+i+')" title="Excluir pedido (admin)">×</button>':'')
         +'</td></tr>';
     }).join('')+'</table></div></div>')+'</div>'
     +'<div id="pdf2" style="display:none">'+bPedForm()+'</div>';
@@ -2735,12 +2763,18 @@ function renderItensPedido(){
 
 // ── CADASTRO RÁPIDO DE PRODUTO (do pedido) ──────────────
 function abrirCadastroRapidoProd(itemIdx){
+  _crpItemIdx = (itemIdx === undefined || itemIdx === null) ? -1 : itemIdx;
   if(!canEditData()){toast('Sem permissão.');return;}
-  var it = itensPedido[itemIdx] || {};
+  var it = _crpItemIdx >= 0 ? (itensPedido[_crpItemIdx] || {}) : {};
+  var titulo = _crpItemIdx >= 0 ? 'Cadastrar produto rápido' : 'Cadastrar produto avulso';
+  var subtitulo = _crpItemIdx >= 0
+    ? 'Preencha o essencial — você pode completar depois em Produtos.'
+    : 'Cadastre um produto sem vincular a pedido. Você pode completar depois em Produtos.';
+  var btnLabel = _crpItemIdx >= 0 ? 'Salvar produto e vincular' : 'Salvar produto';
   var ov=document.createElement('div');ov.className='overlay';ov.id='crpov';
   ov.innerHTML='<div class="modal">'
-    +'<div class="mt2">Cadastrar produto rápido</div>'
-    +'<div class="ms2">Preencha o essencial — você pode completar depois em Produtos.</div>'
+    +'<div class="mt2">'+titulo+'</div>'
+    +'<div class="ms2">'+subtitulo+'</div>'
     +'<div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25);border-radius:6px;padding:8px 11px;font-size:10px;color:var(--t2);margin-bottom:10px;line-height:1.5">'
     +'O produto será salvo como <b style="color:var(--warn)">Cadastro incompleto</b>. Você precisa ir em <b>Produtos</b> depois e preencher ST, antecipação, FCP, concorrentes e fornecedores.'
     +'</div>'
@@ -2754,14 +2788,21 @@ function abrirCadastroRapidoProd(itemIdx){
     +'<div class="f"><label>Aliq. origem ICMS (%)</label><input type="number" id="crp_ao" placeholder="7" step="0.01"></div>'
     +'</div>'
     +'<div class="btns">'
-    +'<button class="btn p" onclick="salvarCadastroRapidoProd('+itemIdx+')">Salvar produto e vincular</button>'
+    +'<button class="btn p" onclick="salvarCadastroRapidoProd()">'+btnLabel+'</button>'
     +'<button class="btn" onclick="clsOv(\'crpov\')">Cancelar</button>'
     +'</div></div>';
   document.body.appendChild(ov);
   setTimeout(function(){var e=document.getElementById('crp_desc');if(e)e.focus();},100);
 }
 
-function salvarCadastroRapidoProd(itemIdx){
+// Atalho para abrir o modal avulso (a partir do botao da aba Pedidos)
+function abrirCadastroRapidoAvulso(){
+  abrirCadastroRapidoProd(-1);
+}
+
+var _crpItemIdx = -1; // -1 = avulso, >=0 = vincula ao item do pedido
+
+function salvarCadastroRapidoProd(){
   if(!canEditData()){toast('Sem permissão.');return;}
   var desc = (document.getElementById('crp_desc').value||'').trim();
   var custo = parseFloat(document.getElementById('crp_custo').value)||0;
@@ -2795,24 +2836,29 @@ function salvarCadastroRapidoProd(itemIdx){
     metodo: null,
     cadastroIncompleto: true,
     criadoEm: new Date().toISOString(),
-    criadoVia: 'pedido-rapido'
+    criadoVia: _crpItemIdx >= 0 ? 'pedido-rapido' : 'avulso-pedidos'
   };
   prods.push(novo);
   var novoIdx = prods.length - 1;
-  // Vincula o item do pedido ao produto recém-criado
-  if(itensPedido[itemIdx]){
-    itensPedido[itemIdx].produtoId = novoIdx;
-    itensPedido[itemIdx].descPedido = desc;
-    itensPedido[itemIdx].custoUnitPedido = custo;
-    itensPedido[itemIdx].ipi = ipi;
-    calcItemPed(itemIdx);
+  // Se veio do item de pedido, vincula; se veio avulso, só salva
+  if(_crpItemIdx >= 0 && itensPedido[_crpItemIdx]){
+    itensPedido[_crpItemIdx].produtoId = novoIdx;
+    itensPedido[_crpItemIdx].descPedido = desc;
+    itensPedido[_crpItemIdx].custoUnitPedido = custo;
+    itensPedido[_crpItemIdx].ipi = ipi;
+    calcItemPed(_crpItemIdx);
   }
-  // Salva em Firestore
   db.collection('empresas').doc(curEmpresaId).update({prods:prods})
     .then(function(){
       clsOv('crpov');
-      renderItensPedido();
-      toast('Produto cadastrado e vinculado!');
+      if(_crpItemIdx >= 0){
+        renderItensPedido();
+        toast('Produto cadastrado e vinculado!');
+      } else {
+        toast('Produto cadastrado! Complete os dados em Produtos.');
+        ren();
+      }
+      _crpItemIdx = -1;
     })
     .catch(function(e){toast('Erro: '+e.message);});
 }
@@ -2932,6 +2978,23 @@ function cancelarEdicaoPedido(){
   }, 60);
 }
 
+async function excluirPedido(i){
+  if(!isAdmin()){toast('Apenas administradores podem excluir pedidos.');return;}
+  var ped = (curEmpresa&&curEmpresa.pedidos||[])[i];
+  if(!ped)return;
+  var numero = ped.numero || '(sem número)';
+  var nConf = ped.status==='recebido_xml'||ped.status==='recebido_manual' ? '\n\nATENÇÃO: este pedido já foi conferido — a conferência vinculada NÃO será removida automaticamente.' : '';
+  if(!confirm('Tem certeza que quer excluir o pedido '+numero+'?'+nConf+'\n\nEsta ação NÃO pode ser desfeita.'))return;
+  // Segunda confirmação para segurança
+  if(!confirm('Confirma DEFINITIVAMENTE a exclusão do pedido '+numero+'?'))return;
+  curEmpresa.pedidos.splice(i,1);
+  try {
+    await db.collection('empresas').doc(curEmpresaId).update({pedidos: curEmpresa.pedidos});
+    toast('Pedido '+numero+' excluído.');
+    ren();
+  } catch(e){ toast('Erro: '+e.message); }
+}
+
 function verJustificativa(i){
   var ped = (curEmpresa&&curEmpresa.pedidos||[])[i];
   if(!ped)return;
@@ -3008,6 +3071,7 @@ function abrirPedido(i){
     +(ped.status==='rascunho' && canEditData() ?'<button class="btn p" onclick="enviarPedido('+i+')">Marcar como Enviado</button>':'')
     +(ped.status==='enviado' && canEditData() ?'<button class="btn g" onclick="clsOv(\'pedov\');registrarEntrada('+i+')">Registrar entrada</button>':'')
     +(podeEditar?'<button class="btn" onclick="clsOv(\'pedov\');editarPedido('+i+')">✎ Editar</button>':'')
+    +(isAdmin()?'<button class="btn d" onclick="clsOv(\'pedov\');excluirPedido('+i+')">× Excluir</button>':'')
     +'<button class="btn" onclick="clsOv(\'pedov\')">Fechar</button></div></div>';
   document.body.appendChild(ov);
 }
