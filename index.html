@@ -42,6 +42,9 @@ table{width:100%;border-collapse:collapse;font-size:10px}th{text-align:left;padd
 .empty{text-align:center;padding:32px;color:var(--t3);font-size:11px}
 .ptab{display:flex;gap:2px;background:var(--bg3);border-radius:6px;padding:3px;width:fit-content;margin-bottom:12px}.ptb{border:none;background:none;font-family:var(--sans);font-size:10px;font-weight:700;color:var(--t2);padding:4px 12px;border-radius:5px;cursor:pointer;transition:all .15s}.ptb.on{background:var(--bg2);color:var(--text);border:1px solid var(--border)}
 .footer{background:var(--bg2);border-top:1px solid var(--border);padding:7px 18px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}.ftxt{font-size:9px;color:var(--t3)}
+#wpp-btn:hover{transform:scale(1.1);box-shadow:0 6px 18px rgba(37,211,102,.6) !important}
+#wpp-btn:active{transform:scale(.95)}
+@media print { #wpp-btn { display:none !important } }
 .tw{position:relative;display:inline-flex;align-items:center;margin-left:4px}
 .ti{width:14px;height:14px;border-radius:50%;background:rgba(212,175,90,.15);border:1px solid rgba(212,175,90,.4);color:var(--gold2);font-size:9px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-family:serif;font-style:italic;flex-shrink:0;user-select:none}
 .ti:hover{background:rgba(212,175,90,.3)}
@@ -124,9 +127,10 @@ table{width:100%;border-collapse:collapse;font-size:10px}th{text-align:left;padd
 <span class="snm">Precify <span class="bv">v9</span></span>
 <div style="display:flex;align-items:center;gap:8px;margin-left:8px;padding-left:8px;border-left:1px solid var(--bdr2)">
 <span style="font-size:9px;color:var(--t3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Empresa</span>
-<select id="empresa-sel" onchange="trocarEmpresa(this.value)" style="background:var(--bg3);border:1px solid var(--bdr2);border-radius:5px;padding:3px 7px;color:var(--text);font-family:var(--sans);font-size:10px;font-weight:600;outline:none;cursor:pointer;max-width:180px">
+<select id="empresa-sel" onchange="trocarEmpresa(this.value)" style="background:linear-gradient(135deg,rgba(201,162,84,.15),rgba(201,162,84,.05));border:1px solid var(--gold2);border-radius:6px;padding:5px 10px;color:var(--gold2);font-family:var(--sans);font-size:11px;font-weight:700;outline:none;cursor:pointer;max-width:220px;box-shadow:0 1px 3px rgba(201,162,84,.15)">
 <option>Carregando...</option>
 </select>
+<span id="role-badge" style="display:none"></span>
 </div>
 </div>
 <nav class="nav">
@@ -146,9 +150,25 @@ table{width:100%;border-collapse:collapse;font-size:10px}th{text-align:left;padd
 </div>
 <div class="main" id="main"></div>
 <div class="footer">
-<span class="ftxt">Totali Solu&ccedil;&otilde;es Cont&aacute;beis &middot; Precify</span>
-<img src="data:image/png;base64,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" style="height:16px;opacity:.4;mix-blend-mode:screen" alt="Totali">
+<div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 0;width:100%">
+<div style="font-size:10px;color:var(--gold2);font-weight:700;letter-spacing:.5px">TOTALI SOLU&Ccedil;&Otilde;ES CONT&Aacute;BEIS LTDA</div>
+<div style="font-size:9px;color:var(--t2);display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+<span>CNPJ: 62.269.366/0001-18</span>
+<span>&middot;</span>
+<span>(79) 99841-2107</span>
+<span>&middot;</span>
+<a href="https://www.totalicontabilidade.com.br" target="_blank" style="color:var(--t2);text-decoration:none">www.totalicontabilidade.com.br</a>
+<span>&middot;</span>
+<a href="mailto:contato@totalicontabilidade.com.br" style="color:var(--t2);text-decoration:none">contato@totalicontabilidade.com.br</a>
 </div>
+<div style="font-size:8px;color:var(--t3);margin-top:3px">Precify &middot; Sistema de Forma&ccedil;&atilde;o de Pre&ccedil;os</div>
+</div>
+</div>
+
+<!-- Botao WhatsApp flutuante -->
+<a id="wpp-btn" href="#" onclick="abrirWhatsApp(event)" title="Fale conosco no WhatsApp" style="position:fixed;bottom:20px;right:20px;width:56px;height:56px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(37,211,102,.4);z-index:9998;text-decoration:none;transition:transform .2s,box-shadow .2s">
+<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.304-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+</a>
 </div>
 
 <script>
@@ -1462,10 +1482,68 @@ var editIdx = -1;
 var activeTip = null;
 var pendRep = null;
 var curTipo = 'tributado';
-var ADMIN_EMAIL = 'raoni@totalicontabilidade.com.br';
 
-function isAdmin(){ return currentUser && currentUser.email === ADMIN_EMAIL; }
-function isSuperAdmin(){ return isAdmin(); }
+// ── PERMISSÕES ────────────────────────────────────────────
+// superadmins: e-mails do escritório Totali — veem TODAS as empresas do sistema
+var SUPERADMIN_EMAILS = [
+  'raoni@totalicontabilidade.com.br'
+  // adicione outros e-mails do escritório aqui, ex:
+  // ,'fulano@totalicontabilidade.com.br'
+];
+
+function isSuperAdmin(){
+  return currentUser && SUPERADMIN_EMAILS.indexOf((currentUser.email||'').toLowerCase()) >= 0;
+}
+
+// papel do usuário na empresa ATIVA
+// retorna: 'superadmin' | 'admin' | 'editor' | null
+function myRole(){
+  if(isSuperAdmin()) return 'superadmin';
+  if(!curEmpresa || !currentUser) return null;
+  var membros = curEmpresa.membros || {};
+  return membros[currentUser.uid] || null;
+}
+
+function isAdmin(){ // admin da empresa ATIVA (ou superadmin)
+  var r = myRole();
+  return r === 'superadmin' || r === 'admin';
+}
+function isEditor(){ // pode editar (inclui admin e superadmin)
+  var r = myRole();
+  return r === 'superadmin' || r === 'admin' || r === 'editor';
+}
+function canManageMembers(){ return isAdmin(); }
+function canEditParams(){ return isAdmin(); }
+function canEditData(){ return isEditor(); }
+
+// ── WHATSAPP ─────────────────────────────────────────────
+function abrirWhatsApp(e){
+  if(e && e.preventDefault) e.preventDefault();
+  var telefone = '5579998412107';
+  var nomeEmpresa = (curEmpresa && curEmpresa.razaoSocial) ? curEmpresa.razaoSocial : '';
+  var texto;
+  if(nomeEmpresa){
+    texto = 'Olá! Sou da ' + nomeEmpresa + ' e preciso de ajuda no Totali Precify.';
+  } else {
+    texto = 'Olá! Estou usando o Totali Precify e preciso de ajuda.';
+  }
+  var url = 'https://wa.me/' + telefone + '?text=' + encodeURIComponent(texto);
+  window.open(url, '_blank');
+}
+
+// legenda amigável
+function roleLabel(r){
+  if(r === 'superadmin') return 'Escritório Totali';
+  if(r === 'admin') return 'Administrador';
+  if(r === 'editor') return 'Editor';
+  return 'Sem acesso';
+}
+function roleBadge(r){
+  if(r === 'superadmin') return '<span class="badge bgg">Escritório</span>';
+  if(r === 'admin') return '<span class="badge bby">Admin</span>';
+  if(r === 'editor') return '<span class="badge bgb">Editor</span>';
+  return '<span class="badge brr">Sem acesso</span>';
+}
 
 // ── TOOLTIP ──────────────────────────────────────────────
 function tip(id,ttl,oque,onde,ex){
@@ -1591,29 +1669,91 @@ async function loadUserEmpresas(){
     queryMain: '?', queryMainErr: '',
     userDocExists: '?', empresaAtiva: '?',
     fb1Run: false, fb1Found: false, fb1Err: '',
-    fb2Run: false, fb2Count: 0, fb2Err: ''
+    fb2Run: false, fb2Count: 0, fb2Err: '',
+    isSuperAdmin: isSuperAdmin() ? 'SIM' : 'NAO',
+    convitesProcessados: 0
   };
   try{
     var getOpts = _isSafariIOS ? {source:'server'} : undefined;
 
-    // ── QUERY PRINCIPAL (where membros.uid != null) ──
-    try {
-      var queryPromise = db.collection('empresas')
-        .where('membros.'+currentUser.uid,'!=',null)
-        .get(getOpts);
-      var timeoutPromise = new Promise(function(_, rej){
-        setTimeout(function(){ rej(new Error('TIMEOUT_FIRESTORE')); }, 20000);
-      });
-      var snap = await Promise.race([queryPromise, timeoutPromise]);
-      empresas=[];
-      snap.forEach(function(doc){empresas.push(Object.assign({id:doc.id},doc.data()));});
-      window._diagInfo.queryMain = empresas.length;
-    } catch(queryErr) {
-      console.warn('[loadUserEmpresas] Query principal falhou:', queryErr.message);
-      window._diagInfo.queryMainErr = queryErr.message||String(queryErr);
-      empresas = [];
+    // ── PROCESSA CONVITES PENDENTES (se o usuario foi convidado por email) ──
+    if(currentUser.email){
+      try {
+        var convSnap = await db.collection('empresas')
+          .where('convitesPendentes.'+currentUser.email.toLowerCase().replace(/\./g,'_AT_').replace(/@/g,'_'), '!=', null)
+          .get(getOpts);
+        // Nota: Firestore nao permite ponto em nome de campo. Usamos email sanitizado.
+        // A logica real de convites usa um array separado — ver abaixo.
+      } catch(e) { /* silencioso — este e um fallback */ }
+
+      // Abordagem principal: buscar empresas onde convitesPendentes[] contem o email
+      try {
+        var cpSnap = await db.collection('empresas')
+          .where('convitesEmails','array-contains',currentUser.email.toLowerCase())
+          .get(getOpts);
+        var batch = db.batch();
+        var processou = 0;
+        cpSnap.forEach(function(doc){
+          var d = doc.data();
+          var convites = d.convitesPendentes || [];
+          var meuConvite = convites.find(function(c){ return (c.email||'').toLowerCase() === currentUser.email.toLowerCase(); });
+          if(meuConvite){
+            // adiciona como membro com o papel definido no convite
+            var membros = d.membros || {};
+            membros[currentUser.uid] = meuConvite.role || 'editor';
+            var novosConvites = convites.filter(function(c){ return (c.email||'').toLowerCase() !== currentUser.email.toLowerCase(); });
+            var novosEmails = (d.convitesEmails||[]).filter(function(e){ return e !== currentUser.email.toLowerCase(); });
+            batch.update(doc.ref, {
+              membros: membros,
+              convitesPendentes: novosConvites,
+              convitesEmails: novosEmails
+            });
+            processou++;
+          }
+        });
+        if(processou > 0){
+          await batch.commit();
+          window._diagInfo.convitesProcessados = processou;
+          console.log('[loadUserEmpresas] '+processou+' convite(s) aceito(s) automaticamente');
+        }
+      } catch(e){
+        console.warn('[loadUserEmpresas] Erro ao processar convites:', e.message);
+      }
     }
-    console.log('[loadUserEmpresas] Query principal retornou:', empresas.length, 'para uid', currentUser.uid);
+
+    // ── SUPERADMIN: carrega TODAS as empresas do sistema ──
+    if(isSuperAdmin()){
+      try {
+        var allSnap = await db.collection('empresas').get(getOpts);
+        empresas = [];
+        allSnap.forEach(function(doc){ empresas.push(Object.assign({id:doc.id}, doc.data())); });
+        window._diagInfo.queryMain = empresas.length + ' (superadmin)';
+        console.log('[loadUserEmpresas] Superadmin: carregou '+empresas.length+' empresas');
+      } catch(e) {
+        console.error('[loadUserEmpresas] Superadmin falhou:', e);
+        window._diagInfo.queryMainErr = e.message||String(e);
+        empresas = [];
+      }
+    } else {
+      // ── QUERY PRINCIPAL (usuario normal: where membros.uid != null) ──
+      try {
+        var queryPromise = db.collection('empresas')
+          .where('membros.'+currentUser.uid,'!=',null)
+          .get(getOpts);
+        var timeoutPromise = new Promise(function(_, rej){
+          setTimeout(function(){ rej(new Error('TIMEOUT_FIRESTORE')); }, 20000);
+        });
+        var snap = await Promise.race([queryPromise, timeoutPromise]);
+        empresas=[];
+        snap.forEach(function(doc){empresas.push(Object.assign({id:doc.id},doc.data()));});
+        window._diagInfo.queryMain = empresas.length;
+      } catch(queryErr) {
+        console.warn('[loadUserEmpresas] Query principal falhou:', queryErr.message);
+        window._diagInfo.queryMainErr = queryErr.message||String(queryErr);
+        empresas = [];
+      }
+      console.log('[loadUserEmpresas] Query principal retornou:', empresas.length, 'para uid', currentUser.uid);
+    }
 
     // ── LE USER DOC ──
     var userDoc, empresaAtiva = null;
@@ -1631,8 +1771,8 @@ async function loadUserEmpresas(){
       window._diagInfo.empresaAtiva = udErr.message;
     }
 
-    // ── FALLBACK 1: buscar empresa ativa por ID direto ──
-    if (empresas.length === 0 && empresaAtiva) {
+    // ── FALLBACK 1: buscar empresa ativa por ID direto (so para nao-superadmin) ──
+    if (!isSuperAdmin() && empresas.length === 0 && empresaAtiva) {
       window._diagInfo.fb1Run = true;
       console.log('[loadUserEmpresas] FB1 — buscando empresa ativa:', empresaAtiva);
       try {
@@ -1650,10 +1790,8 @@ async function loadUserEmpresas(){
       }
     }
 
-    // ── FALLBACK 2: query simples por criadoPor == uid ──
-    // (queries com == em campo de topo sao MUITO mais estaveis no Safari iOS
-    //  que where != em nested fields)
-    if (empresas.length === 0) {
+    // ── FALLBACK 2: query simples por criadoPor == uid (Safari) ──
+    if (!isSuperAdmin() && empresas.length === 0) {
       window._diagInfo.fb2Run = true;
       console.log('[loadUserEmpresas] FB2 — tentando por criadoPor');
       try {
@@ -1711,6 +1849,17 @@ function updateEmpresaSelector(){
   }).join('');
   if(!curEmpresaId&&empresas.length===0){
     sel.innerHTML='<option>Nenhuma empresa</option>';
+  }
+  // Atualiza badge do papel do usuario
+  var badge = document.getElementById('role-badge');
+  if(badge){
+    var r = myRole();
+    if(r){
+      badge.style.display='inline-flex';
+      badge.innerHTML = roleBadge(r);
+    } else {
+      badge.style.display='none';
+    }
   }
 }
 
@@ -1864,7 +2013,7 @@ function rDashGrid(){
     +'<div style="font-size:14px;font-weight:700;color:var(--gold2)">'+regimeName()
     +(getRegime()==='simples'&&params.dasTrib?' &nbsp;<span style="font-size:10px;color:var(--t2);font-weight:400">DAS tributado: '+params.dasTrib+'%</span>':'')
     +'</div></div>'
-    +'<button class="btn xs" onclick="go(\'empresas\')">Configurar parâmetros</button></div>';
+    +(canEditParams()?'<button class="btn xs" onclick="go(\'empresas\')">Configurar parâmetros</button>':'<span style="font-size:10px;color:var(--t3);font-style:italic">Apenas administradores</span>')+'</div>';
   return regimeInfo
     +'<div class="g4"><div class="stat"><div class="sv svd">'+tot+'</div><div class="sl">Total produtos</div></div>'
     +'<div class="stat"><div class="sv svg2">'+comp+'</div><div class="sl">Competitivos</div></div>'
@@ -1887,40 +2036,208 @@ function rEmpresas(){
   return'<div class="ptab"><button class="ptb on" id="etb0" onclick="stabE(0)">Minhas empresas</button>'
     +'<button class="ptb" id="etb1" onclick="stabE(1)">+ Nova empresa</button>'
     +'<button class="ptb" id="etb2" onclick="stabE(2)" style="display:none">Parâmetros fiscais</button>'
+    +(canManageMembers()?'<button class="ptb" id="etb3" onclick="stabE(3)">Membros</button>':'')
     +'</div>'
     +'<div id="el">'+(empresas.length===0?'<div class="empty">Nenhuma empresa cadastrada.</div>'
     :'<div class="card"><div style="overflow-x:auto"><table>'
-    +'<tr><th>Razão Social</th><th>CNPJ</th><th>UF</th><th>Regime</th><th>Produtos</th><th></th></tr>'
+    +'<tr><th>Razão Social</th><th>CNPJ</th><th>UF</th><th>Regime</th><th>Produtos</th><th>Seu papel</th><th></th></tr>'
     +empresas.map(function(e,i){
       var isAtiva=e.id===curEmpresaId;
       var pCount=e.id===curEmpresaId?prods.length:(e.prods||[]).length;
       var regime=(e.params&&e.params.regime)||'';
       var regLabel=regime==='simples'?'Simples':regime==='presumido'?'Presumido':regime==='real'?'Real':'—';
+      // papel do usuario NESTA empresa (nao necessariamente a ativa)
+      var papelAqui = isSuperAdmin() ? 'superadmin' : ((e.membros && currentUser && e.membros[currentUser.uid]) || null);
       return'<tr'+(isAtiva?' style="background:rgba(212,175,90,.05)"':'')+'>'
         +'<td style="font-family:var(--sans);font-weight:600">'+esc(e.razaoSocial)+(isAtiva?' <span class="badge bgold">Ativa</span>':'')+'</td>'
         +'<td><span class="tag">'+fCNPJ(e.cnpj)+'</span></td>'
         +'<td>'+(e.endereco&&e.endereco.uf?e.endereco.uf:'—')+'</td>'
         +'<td>'+(regLabel!=='—'?'<span class="badge '+(regime==='simples'?'bgg':regime==='presumido'?'bgold':'bbl')+'">'+regLabel+'</span>':'—')+'</td>'
         +'<td style="text-align:center">'+pCount+'</td>'
+        +'<td>'+(papelAqui?roleBadge(papelAqui):'<span style="color:var(--t3);font-size:10px">—</span>')+'</td>'
         +'<td style="display:flex;gap:4px">'
         +(!isAtiva?'<button class="btn xs g" onclick="trocarEmpresa(\''+e.id+'\')">Selecionar</button>':'')
-        +'<button class="btn xs" onclick="editEmpresa(\''+e.id+'\')">Editar</button>'
-        +'<button class="btn xs" onclick="stabE(2);loadParams(\''+e.id+'\')">Parâmetros</button>'
+        +(papelAqui==='superadmin'||papelAqui==='admin'?'<button class="btn xs" onclick="editEmpresa(\''+e.id+'\')">Editar</button>':'')
+        +(papelAqui==='superadmin'||papelAqui==='admin'?'<button class="btn xs" onclick="stabE(2);loadParams(\''+e.id+'\')">Parâmetros</button>':'')
         +'</td></tr>';
     }).join('')+'</table></div></div>')+'</div>'
     +'<div id="ef" style="display:none">'+bEmpForm()+'</div>'
-    +'<div id="ep" style="display:none">'+rParams()+'</div>';
+    +'<div id="ep" style="display:none">'+rParams()+'</div>'
+    +'<div id="em" style="display:none">'+(canManageMembers()?rMembros():'')+'</div>';
 }
 
 function stabE(idx){
-  var el=document.getElementById('el'),ef=document.getElementById('ef'),ep=document.getElementById('ep');
+  var el=document.getElementById('el'),ef=document.getElementById('ef'),ep=document.getElementById('ep'),em=document.getElementById('em');
   var tb2=document.getElementById('etb2');
   if(el)el.style.display=idx===0?'block':'none';
   if(ef)ef.style.display=idx===1?'block':'none';
   if(ep)ep.style.display=idx===2?'block':'none';
+  if(em)em.style.display=idx===3?'block':'none';
   if(tb2)tb2.style.display=idx===2?'inline-flex':'none';
   document.querySelectorAll('.ptb').forEach(function(b,i){b.classList.toggle('on',i===idx);});
   if(idx===1&&editEmpIdx<0){document.getElementById('ef').innerHTML=bEmpForm();}
+  if(idx===3 && em){em.innerHTML=rMembros();}
+}
+
+// ── MEMBROS ──────────────────────────────────────────────
+function rMembros(){
+  if(!canManageMembers()){
+    return '<div class="empty">Apenas administradores podem gerenciar membros.</div>';
+  }
+  if(!curEmpresa){
+    return '<div class="empty">Selecione uma empresa primeiro.</div>';
+  }
+  var membros = curEmpresa.membros || {};
+  var convites = curEmpresa.convitesPendentes || [];
+
+  // Lista de membros ativos
+  var listaMembros = Object.keys(membros).map(function(uid){
+    return {uid:uid, role:membros[uid]};
+  });
+
+  var rowsMembros = listaMembros.length > 0 ? listaMembros.map(function(m){
+    var isEu = currentUser && m.uid === currentUser.uid;
+    var isMaster = curEmpresa.criadoPor === m.uid;
+    return '<tr>'
+      +'<td style="font-family:var(--mono);font-size:9px;color:var(--t2)">'+esc(m.uid.slice(0,10))+'...</td>'
+      +'<td>'+roleBadge(m.role)+(isMaster?' <span class="badge bgold" title="Criador da empresa">Master</span>':'')+(isEu?' <span style="font-size:9px;color:var(--gold2);font-weight:700">(você)</span>':'')+'</td>'
+      +'<td style="display:flex;gap:4px;flex-wrap:wrap">'
+      +(!isEu && !isMaster ? '<select onchange="changeMemberRole(\''+m.uid+'\', this.value)" style="font-size:10px;background:var(--bg3);border:1px solid var(--bdr2);color:var(--text);border-radius:4px;padding:2px 6px">'
+        +'<option value="admin"'+(m.role==='admin'?' selected':'')+'>Admin</option>'
+        +'<option value="editor"'+(m.role==='editor'?' selected':'')+'>Editor</option>'
+        +'</select>'
+        +'<button class="btn xs d" onclick="removeMember(\''+m.uid+'\')">Remover</button>'
+        : '<span style="color:var(--t3);font-size:10px;font-style:italic">'+(isEu?'Você mesmo':'Criador — não remove')+'</span>')
+      +'</td></tr>';
+  }).join('') : '<tr><td colspan="3" class="empty">Nenhum membro além de você.</td></tr>';
+
+  // Convites pendentes
+  var rowsConvites = convites.length > 0 ? convites.map(function(c,i){
+    var dt = c.convidadoEm ? new Date(c.convidadoEm).toLocaleDateString('pt-BR') : '—';
+    return '<tr>'
+      +'<td style="font-family:var(--mono);font-size:10px">'+esc(c.email)+'</td>'
+      +'<td>'+roleBadge(c.role||'editor')+'</td>'
+      +'<td style="font-size:10px;color:var(--t2)">'+dt+'</td>'
+      +'<td><button class="btn xs d" onclick="cancelInvite('+i+')">Cancelar</button></td>'
+      +'</tr>';
+  }).join('') : '<tr><td colspan="4" class="empty">Nenhum convite pendente.</td></tr>';
+
+  return '<div class="card"><div class="ct">Convidar novo membro</div>'
+    +'<div style="font-size:10px;color:var(--t2);margin-bottom:10px;line-height:1.5">'
+    +'O convite é enviado para um e-mail. Quando essa pessoa fizer login (ou criar conta) com o e-mail informado, ela será automaticamente adicionada à empresa com o papel escolhido.'
+    +'</div>'
+    +'<div class="g3f">'
+    +'<div class="f sp2"><label>E-mail da pessoa</label><input type="email" id="inv_email" placeholder="pessoa@empresa.com"></div>'
+    +'<div class="f"><label>Papel '+tip('inv_role','Níveis de acesso','Admin: tudo, inclusive parâmetros fiscais e convidar outros. Editor: cadastra/edita produtos, pedidos e conferências, mas não mexe em parâmetros nem membros.','Defina conforme a responsabilidade da pessoa.','Contador sócio: Admin. Funcionário de estoque: Editor.')+'</label>'
+    +'<select id="inv_role" style="background:var(--bg3);border:1px solid var(--bdr2);border-radius:5px;padding:6px 8px;color:var(--text);font-size:11px">'
+    +'<option value="admin">Admin (tudo)</option>'
+    +'<option value="editor" selected>Editor (cadastra/edita, não mexe em parâmetros)</option>'
+    +'</select></div>'
+    +'</div>'
+    +'<div class="btns" style="margin-top:10px"><button class="btn p" onclick="inviteMember()">Enviar convite</button></div>'
+    +'</div>'
+    +'<div class="card"><div class="ct">Membros atuais '+(listaMembros.length>0?'('+listaMembros.length+')':'')+'</div>'
+    +'<div style="overflow-x:auto"><table>'
+    +'<tr><th>UID</th><th>Papel</th><th></th></tr>'+rowsMembros+'</table></div>'
+    +'</div>'
+    +'<div class="card"><div class="ct">Convites pendentes '+(convites.length>0?'('+convites.length+')':'')+'</div>'
+    +'<div style="overflow-x:auto"><table>'
+    +'<tr><th>E-mail</th><th>Papel</th><th>Enviado em</th><th></th></tr>'+rowsConvites+'</table></div>'
+    +'</div>';
+}
+
+async function inviteMember(){
+  if(!canManageMembers()){toast('Sem permissão.');return;}
+  if(!curEmpresaId){toast('Selecione uma empresa.');return;}
+  var emailEl = document.getElementById('inv_email');
+  var roleEl = document.getElementById('inv_role');
+  if(!emailEl||!roleEl)return;
+  var email = (emailEl.value||'').trim().toLowerCase();
+  var role = roleEl.value || 'editor';
+  if(!email || email.indexOf('@')<0){toast('Informe um e-mail válido.');return;}
+  if(currentUser && email === (currentUser.email||'').toLowerCase()){toast('Você já é membro.');return;}
+
+  // Verifica se já não é membro pelo email (só dá pra saber se já tem convite)
+  var convites = (curEmpresa.convitesPendentes||[]).slice();
+  if(convites.find(function(c){return (c.email||'').toLowerCase()===email;})){
+    toast('Já existe convite pendente para este e-mail.');return;
+  }
+
+  var novoConvite = {
+    email: email,
+    role: role,
+    convidadoEm: new Date().toISOString(),
+    convidadoPor: currentUser.uid
+  };
+  convites.push(novoConvite);
+  var emailsArr = (curEmpresa.convitesEmails||[]).slice();
+  if(emailsArr.indexOf(email)<0) emailsArr.push(email);
+
+  try {
+    await db.collection('empresas').doc(curEmpresaId).update({
+      convitesPendentes: convites,
+      convitesEmails: emailsArr
+    });
+    curEmpresa.convitesPendentes = convites;
+    curEmpresa.convitesEmails = emailsArr;
+    emailEl.value='';
+    toast('Convite enviado! Quando '+email+' logar, será adicionado.');
+    ren();
+  } catch(e){
+    toast('Erro: '+e.message);
+  }
+}
+
+async function cancelInvite(idx){
+  if(!canManageMembers())return;
+  if(!confirm('Cancelar convite?'))return;
+  var convites = (curEmpresa.convitesPendentes||[]).slice();
+  if(idx<0||idx>=convites.length)return;
+  var emailRem = (convites[idx].email||'').toLowerCase();
+  convites.splice(idx,1);
+  var emailsArr = (curEmpresa.convitesEmails||[]).filter(function(e){return e!==emailRem;});
+  try {
+    await db.collection('empresas').doc(curEmpresaId).update({
+      convitesPendentes: convites,
+      convitesEmails: emailsArr
+    });
+    curEmpresa.convitesPendentes = convites;
+    curEmpresa.convitesEmails = emailsArr;
+    toast('Convite cancelado.');
+    ren();
+  } catch(e){ toast('Erro: '+e.message); }
+}
+
+async function changeMemberRole(uid, newRole){
+  if(!canManageMembers())return;
+  if(!curEmpresaId||!curEmpresa.membros)return;
+  if(uid === curEmpresa.criadoPor){toast('O criador não pode mudar de papel.');return;}
+  if(currentUser && uid === currentUser.uid){toast('Você não pode mudar seu próprio papel.');return;}
+  if(newRole!=='admin' && newRole!=='editor'){toast('Papel inválido.');return;}
+  var novos = Object.assign({}, curEmpresa.membros);
+  novos[uid] = newRole;
+  try {
+    await db.collection('empresas').doc(curEmpresaId).update({membros: novos});
+    curEmpresa.membros = novos;
+    toast('Papel atualizado.');
+    ren();
+  } catch(e){ toast('Erro: '+e.message); }
+}
+
+async function removeMember(uid){
+  if(!canManageMembers())return;
+  if(!curEmpresaId||!curEmpresa.membros)return;
+  if(uid === curEmpresa.criadoPor){toast('Não pode remover o criador.');return;}
+  if(currentUser && uid === currentUser.uid){toast('Não pode remover a si mesmo.');return;}
+  if(!confirm('Remover este membro? Ele perderá acesso a esta empresa.'))return;
+  var novos = Object.assign({}, curEmpresa.membros);
+  delete novos[uid];
+  try {
+    await db.collection('empresas').doc(curEmpresaId).update({membros: novos});
+    curEmpresa.membros = novos;
+    toast('Membro removido.');
+    ren();
+  } catch(e){ toast('Erro: '+e.message); }
 }
 
 function bEmpForm(){
@@ -1985,6 +2302,8 @@ function editEmpresa(empId){
 }
 
 async function saveEmpresa(){
+  // Editores nao podem editar dados da empresa
+  if(editEmpIdx && !canEditParams()){toast('Sem permissão para editar dados da empresa.');return;}
   var rs=document.getElementById('e_rs').value.trim();
   var cnpj=(document.getElementById('e_cnpj').value||'').replace(/\D/g,'');
   if(!rs){toast('Informe a razão social.');return;}
@@ -2014,6 +2333,7 @@ async function saveEmpresa(){
     } else {
       emp.membros={};emp.membros[currentUser.uid]='admin';
       emp.criadoPor=currentUser.uid;emp.criadoEm=new Date().toISOString();
+      emp.convitesPendentes=[]; emp.convitesEmails=[];
       emp.prods=[];emp.fbase={};emp.params={};emp.fornecedores=[];emp.pedidos=[];
       var ref=await db.collection('empresas').add(emp);
       emp.id=ref.id;empresas.push(emp);
@@ -2056,6 +2376,7 @@ function rParams(){
 }
 function selRegimeP(r){params.regime=r;var ep=document.getElementById('ep');if(ep)ep.innerHTML=rParams();}
 function saveParams(){
+  if(!canEditParams()){toast('Sem permissão para alterar parâmetros fiscais.');return;}
   var r=params.regime;
   if(!r){toast('Selecione o regime tributário.');return;}
   if(r==='simples'){
