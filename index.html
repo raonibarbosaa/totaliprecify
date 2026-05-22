@@ -2952,7 +2952,7 @@ function editEmpresa(empId){
 
 async function saveEmpresa(){
   // Editores nao podem editar dados da empresa
-  if(editEmpIdx && !canEditParams()){toast('Sem permissão para editar dados da empresa.');return;}
+  if(editEmpIdx !== -1 && !canEditParams()){toast('Sem permissão para editar dados da empresa.');return;}
   var rs=document.getElementById('e_rs').value.trim();
   var cnpj=(document.getElementById('e_cnpj').value||'').replace(/\D/g,'');
   if(!rs){toast('Informe a razão social.');return;}
@@ -2974,7 +2974,7 @@ async function saveEmpresa(){
     updatedAt:new Date().toISOString()
   };
   try{
-    if(editEmpIdx){
+    if(editEmpIdx !== -1){
       await db.collection('empresas').doc(editEmpIdx).update(emp);
       var idx=empresas.findIndex(function(e){return e.id===editEmpIdx;});
       if(idx>=0)empresas[idx]=Object.assign(empresas[idx],emp);
