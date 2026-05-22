@@ -110,6 +110,7 @@ table{width:100%;border-collapse:collapse;font-size:10px}th{text-align:left;padd
 <div class="f" style="margin-bottom:6px"><label>Senha</label><input type="password" id="auth-pass" placeholder="Sua senha" onkeydown="if(event.key==='Enter')doLogin()"></div>
 <div id="auth-err" style="font-size:10px;color:var(--danger);min-height:16px;margin-bottom:10px"></div>
 <button class="btn p" id="auth-btn" onclick="doLogin()" style="width:100%;padding:10px;font-size:12px">Entrar</button>
+<button class="btn" id="auth-signup-btn" onclick="doSignup()" style="width:100%;padding:10px;font-size:12px;margin-top:8px">Criar conta</button>
 <div style="display:flex;justify-content:space-between;margin-top:14px">
 <button onclick="doResetPass()" style="border:none;color:var(--t2);background:none;cursor:pointer;font-size:10px;font-family:var(--sans)">Esqueci minha senha</button>
 <a href="https://hub.la/r/totalyprecify" target="_blank" style="font-size:10px;color:var(--gold2);font-family:var(--sans);font-weight:700;text-decoration:none">Solicitar acesso &rarr;</a>
@@ -2012,6 +2013,30 @@ function doLogout(){
     empresas=[];curEmpresa=null;curEmpresaId=null;
   });
 }
+function doSignup(){
+  var email=document.getElementById('auth-email').value.trim();
+  var pass=document.getElementById('auth-pass').value;
+  var err=document.getElementById('auth-err');
+  err.textContent='';err.style.color='var(--danger)';
+  if(!email||!pass){err.textContent='Preencha e-mail e senha para criar a conta.';return;}
+  if(pass.length<6){err.textContent='A senha precisa ter pelo menos 6 caracteres.';return;}
+  var btn=document.getElementById('auth-signup-btn');
+  if(btn)btn.textContent='Criando conta...';
+  firebase.auth().createUserWithEmailAndPassword(email,pass)
+    .then(function(){
+      // onAuthStateChanged cuida do resto: carrega empresas e processa o convite pendente
+    })
+    .catch(function(e){
+      if(btn)btn.textContent='Criar conta';
+      if(e.code==='auth/email-already-in-use')
+        err.textContent='Esse e-mail já tem conta. Use "Entrar" ou "Esqueci minha senha".';
+      else if(e.code==='auth/weak-password')
+        err.textContent='A senha precisa ter pelo menos 6 caracteres.';
+      else if(e.code==='auth/invalid-email')
+        err.textContent='E-mail inválido.';
+      else err.textContent='Erro: '+e.message;
+    });
+}
 function doResetPass(){
   var email=document.getElementById('auth-email').value.trim();
   var err=document.getElementById('auth-err');
@@ -2794,8 +2819,8 @@ function mostrarConviteSalvo(email, role){
   var roleNome = role === 'admin' ? 'Administrador' : 'Editor';
   var mensagem = 'Olá! Você foi convidado(a) para acessar o sistema Totali Precify da '+nomeEmp+' como '+roleNome+'.\n\n'
     +'1) Acesse: '+siteURL+'\n'
-    +'2) Clique em "Esqueci minha senha" e informe o seu e-mail: '+email+'\n'
-    +'3) Após criar a senha, faça login — você entrará automaticamente na empresa.\n\n'
+    +'2) Clique em "Criar conta", informe este e-mail ('+email+') e defina uma senha (mínimo 6 caracteres).\n'
+    +'3) Pronto! Você já entra logado e é vinculado(a) automaticamente à empresa.\n\n'
     +'Em caso de dúvidas, estou à disposição.';
   var mensagemEncodada = encodeURIComponent(mensagem);
   var assuntoEmail = encodeURIComponent('Convite — Totali Precify — '+nomeEmp);
