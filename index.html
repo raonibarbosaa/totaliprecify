@@ -2551,6 +2551,15 @@ function rSemEmpresa(){
   // Se houve erro explicito OU se o usuario tem auth mas 0 empresas carregaram
   // (sintoma classico do Safari iOS com cache corrompido), mostra tela de erro.
   var suspeitoBug = currentUser && empCount===0 && !window._loadErr;
+  var meuCodigoBox = (currentUser && !window._loadErr) ? (
+    '<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:14px 16px;margin:14px auto;max-width:500px;text-align:left">'
+    +'<div style="font-size:11px;font-weight:700;color:var(--gold2);margin-bottom:6px">Seu código de acesso</div>'
+    +'<div style="font-size:10px;color:var(--t2);margin-bottom:8px;line-height:1.5">Envie este código para o escritório (seu contador) liberar o seu acesso à empresa.</div>'
+    +'<div style="display:flex;gap:6px;align-items:center">'
+    +'<input id="meu-uid" readonly value="'+esc(uid)+'" style="flex:1;min-width:0;background:var(--bg3);border:1px solid var(--bdr2);color:var(--text);border-radius:6px;padding:8px;font-size:11px;font-family:var(--mono)">'
+    +'<button class="btn p" onclick="copiarMeuUid()">Copiar</button>'
+    +'</div></div>'
+  ) : '';
   if(window._loadErr || suspeitoBug){
     var isTimeout = window._loadErr && /TIMEOUT/i.test(window._loadErr);
     var titulo = window._loadErr
@@ -2565,6 +2574,7 @@ function rSemEmpresa(){
       +'<div style="font-size:40px;margin-bottom:16px">⚠️</div>'
       +'<div style="font-size:16px;font-weight:700;margin-bottom:8px">'+titulo+'</div>'
       +'<div style="font-size:11px;color:var(--t2);margin-bottom:10px;line-height:1.5">'+msg+'</div>'
+      +meuCodigoBox
       +diag
       +'<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px">'
       +'<button class="btn p" onclick="recarregarDados()">↻ Tentar novamente</button>'
@@ -2842,6 +2852,24 @@ function mostrarConviteSalvo(email, role){
     +'<button class="btn" onclick="clsOv(\'invsav\')">Fechar</button>'
     +'</div></div>';
   document.body.appendChild(ov);
+}
+
+function copiarMeuUid(){
+  var el = document.getElementById('meu-uid');
+  if(!el) return;
+  el.select();
+  el.setSelectionRange(0, 99999);
+  try {
+    navigator.clipboard.writeText(el.value).then(function(){
+      toast('Código copiado!');
+    }, function(){
+      document.execCommand('copy');
+      toast('Código copiado!');
+    });
+  } catch(e){
+    try { document.execCommand('copy'); toast('Código copiado!'); }
+    catch(e2){ toast('Selecione e copie o código manualmente.'); }
+  }
 }
 
 function copiarMensagemConvite(){
@@ -4525,6 +4553,54 @@ function apAntec(){
 }
 
 // ── ADMIN ─────────────────────────────────────────────────
+function membrosAdminCard(empId, e){
+  var membros = e.membros || {};
+  var uids = Object.keys(membros);
+  var rows = uids.length ? uids.map(function(u){
+    var papel = membros[u]==='admin' ? 'Administrador' : 'Editor';
+    var ehCriador = (u === e.criadoPor);
+    return '<tr><td style="font-family:var(--mono);font-size:9px;word-break:break-all">'+esc(u)+'</td>'
+      +'<td style="font-size:10px">'+papel+(ehCriador?' (criador)':'')+'</td>'
+      +'<td>'+(ehCriador?'':'<button class="btn xs d" onclick="adminRemoveMember(\''+empId+'\',\''+esc(u)+'\')">Remover</button>')+'</td></tr>';
+  }).join('') : '<tr><td colspan="3" class="empty">Nenhum membro ainda.</td></tr>';
+  return '<div class="card"><div class="ct">Membros ('+uids.length+')</div>'
+    +'<div style="overflow-x:auto"><table><tr><th>ID do usuário</th><th>Papel</th><th></th></tr>'+rows+'</table></div>'
+    +'<div style="border-top:1px solid var(--bdr2);margin-top:10px;padding-top:10px">'
+    +'<div style="font-size:10px;font-weight:700;color:var(--gold2);margin-bottom:6px">Adicionar membro por ID</div>'
+    +'<div style="font-size:9px;color:var(--t2);margin-bottom:8px;line-height:1.5">Cole o código de acesso que o cliente te enviou (ele encontra na tela inicial dele).</div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
+    +'<input id="adm_add_uid" placeholder="Código de acesso do usuário" style="flex:1;min-width:180px;background:var(--bg3);border:1px solid var(--bdr2);color:var(--text);border-radius:6px;padding:8px;font-size:11px;font-family:var(--mono)">'
+    +'<select id="adm_add_role" style="background:var(--bg3);border:1px solid var(--bdr2);color:var(--text);border-radius:6px;padding:8px;font-size:11px"><option value="admin">Administrador</option><option value="editor">Editor</option></select>'
+    +'<button class="btn p" onclick="adminAddMember(\''+empId+'\')">Adicionar</button>'
+    +'</div></div></div>';
+}
+function adminAddMember(empId){
+  if(!isSuperAdmin()){toast('Apenas o escritório pode adicionar membros aqui.');return;}
+  var uidEl=document.getElementById('adm_add_uid');
+  var roleEl=document.getElementById('adm_add_role');
+  if(!uidEl||!roleEl)return;
+  var uid=(uidEl.value||'').trim();
+  var role=roleEl.value||'admin';
+  if(!uid){toast('Cole o código de acesso do usuário.');return;}
+  if(/[\s/.]/.test(uid)){toast('Código inválido — cole apenas o código, sem espaços.');return;}
+  if(role!=='admin'&&role!=='editor'){toast('Papel inválido.');return;}
+  var upd={};upd['membros.'+uid]=role;
+  db.collection('empresas').doc(empId).update(upd).then(function(){
+    toast('Membro adicionado!');
+    var ov=document.getElementById('admov');if(ov)ov.remove();
+    verEmpresaAdmin(empId);
+  }).catch(function(err){toast('Erro: '+err.message);});
+}
+function adminRemoveMember(empId, uid){
+  if(!isSuperAdmin())return;
+  if(!confirm('Remover este membro da empresa? Ele perderá o acesso.'))return;
+  var upd={};upd['membros.'+uid]=firebase.firestore.FieldValue.delete();
+  db.collection('empresas').doc(empId).update(upd).then(function(){
+    toast('Membro removido.');
+    var ov=document.getElementById('admov');if(ov)ov.remove();
+    verEmpresaAdmin(empId);
+  }).catch(function(err){toast('Erro: '+err.message);});
+}
 function loadAdminData(){
   if(!isAdmin())return;
   db.collection('empresas').get().then(function(snap){
@@ -4578,6 +4654,7 @@ function verEmpresaAdmin(id){
     ov.innerHTML='<div class="modal modal-lg"><div class="mt2">'+esc(e.razaoSocial||'—')+'</div>'
       +'<div class="ms2">CNPJ: '+fCNPJ(e.cnpj||'')+'</div>'
       +'<div class="card"><div class="ct">Parâmetros</div>'+pbr('Regime',(e.params&&e.params.regime)||'—')+'</div>'
+      +membrosAdminCard(id, e)
       +'<div class="card"><div class="ct">'+(e.prods||[]).length+' produto(s)</div>'
       +((e.prods||[]).length===0?'<div class="empty">Sem produtos.</div>'
       :'<table><tr><th>Produto</th><th>NCM</th><th>Custo</th><th>Preço venda</th></tr>'
