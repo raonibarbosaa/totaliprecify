@@ -2298,6 +2298,13 @@ async function loadUserEmpresas(){
   try{
     var getOpts = _isSafariIOS ? {source:'server'} : undefined;
 
+    // Grava o e-mail no doc do proprio usuario (mapa email -> uid, usado para liberar acesso por e-mail)
+    if(currentUser.email){
+      db.collection('users').doc(currentUser.uid)
+        .set({email: currentUser.email.toLowerCase()}, {merge:true})
+        .catch(function(){});
+    }
+
     // ── PROCESSA CONVITES PENDENTES (se o usuario foi convidado por email) ──
     if(currentUser.email){
       try {
@@ -4566,13 +4573,46 @@ function membrosAdminCard(empId, e){
   return '<div class="card"><div class="ct">Membros ('+uids.length+')</div>'
     +'<div style="overflow-x:auto"><table><tr><th>ID do usuário</th><th>Papel</th><th></th></tr>'+rows+'</table></div>'
     +'<div style="border-top:1px solid var(--bdr2);margin-top:10px;padding-top:10px">'
-    +'<div style="font-size:10px;font-weight:700;color:var(--gold2);margin-bottom:6px">Adicionar membro por ID</div>'
-    +'<div style="font-size:9px;color:var(--t2);margin-bottom:8px;line-height:1.5">Cole o código de acesso que o cliente te enviou (ele encontra na tela inicial dele).</div>'
-    +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
-    +'<input id="adm_add_uid" placeholder="Código de acesso do usuário" style="flex:1;min-width:180px;background:var(--bg3);border:1px solid var(--bdr2);color:var(--text);border-radius:6px;padding:8px;font-size:11px;font-family:var(--mono)">'
+    +'<div style="font-size:10px;font-weight:700;color:var(--gold2);margin-bottom:6px">Adicionar membro</div>'
+    +'<div style="font-size:9px;color:var(--t2);margin-bottom:8px;line-height:1.5">Informe o e-mail da pessoa. Ela precisa ter aberto o sistema pelo menos uma vez (criar conta e carregar a página). Como alternativa, dá pra usar o código de acesso (ID) que o cliente vê na tela inicial dele.</div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">'
+    +'<input id="adm_add_email" type="email" placeholder="E-mail do usuário" style="flex:1;min-width:180px;background:var(--bg3);border:1px solid var(--bdr2);color:var(--text);border-radius:6px;padding:8px;font-size:11px;font-family:var(--mono)">'
     +'<select id="adm_add_role" style="background:var(--bg3);border:1px solid var(--bdr2);color:var(--text);border-radius:6px;padding:8px;font-size:11px"><option value="admin">Administrador</option><option value="editor">Editor</option></select>'
-    +'<button class="btn p" onclick="adminAddMember(\''+empId+'\')">Adicionar</button>'
+    +'<button class="btn p" onclick="adminAddMemberByEmail(\''+empId+'\')">Adicionar por e-mail</button>'
+    +'</div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
+    +'<input id="adm_add_uid" placeholder="ou cole o código de acesso (ID)" style="flex:1;min-width:180px;background:var(--bg3);border:1px solid var(--bdr2);color:var(--text);border-radius:6px;padding:8px;font-size:11px;font-family:var(--mono)">'
+    +'<button class="btn" onclick="adminAddMember(\''+empId+'\')">Adicionar por ID</button>'
     +'</div></div></div>';
+}
+function adminAddMemberByEmail(empId){
+  if(!isSuperAdmin()){toast('Apenas o escritório pode adicionar membros.');return;}
+  var emEl=document.getElementById('adm_add_email');
+  var roleEl=document.getElementById('adm_add_role');
+  if(!emEl)return;
+  var email=(emEl.value||'').trim().toLowerCase();
+  var role=(roleEl&&roleEl.value)||'admin';
+  if(!email){toast('Digite o e-mail do usuário.');return;}
+  if(role!=='admin'&&role!=='editor'){toast('Papel inválido.');return;}
+  toast('Procurando usuário...');
+  db.collection('users').where('email','==',email).limit(1).get().then(function(snap){
+    if(snap.empty){
+      toast('Não encontrei esse e-mail. A pessoa precisa abrir o sistema ao menos uma vez (criar conta e carregar a página) depois desta atualização. Se já entrou, use o código de acesso (ID).');
+      return null;
+    }
+    var uid=snap.docs[0].id;
+    var upd={};upd['membros.'+uid]=role;
+    return db.collection('empresas').doc(empId).update(upd).then(function(){
+      toast('Membro adicionado!');
+      var ov=document.getElementById('admov');if(ov)ov.remove();
+      verEmpresaAdmin(empId);
+    });
+  }).catch(function(err){
+    var m=(err&&err.message)||String(err);
+    if(/permission|insufficient/i.test(m))
+      toast('Sem permissão pra buscar usuários por e-mail (regra do Firestore). Use o código de acesso (ID) por enquanto.');
+    else toast('Erro: '+m);
+  });
 }
 function adminAddMember(empId){
   if(!isSuperAdmin()){toast('Apenas o escritório pode adicionar membros aqui.');return;}
