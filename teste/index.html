@@ -4896,6 +4896,7 @@ function svFormHTML(){
         +'<div style="margin-top:12px"><div style="font-size:9px;color:var(--t2);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Pra onde vai cada real</div>'
         +'<div class="svbar" id="sv_bar"></div>'
         +'<div id="sv_legend"></div></div>'
+        +'<div id="sv_totais"></div>'
         +'<div id="sv_flag"></div>'
         +'<div id="sv_refbox"></div>'
         +'<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px">'
@@ -5003,6 +5004,7 @@ function svCalc(){
   var price=document.getElementById('sv_price'), sub=document.getElementById('sv_sub');
   var bar=document.getElementById('sv_bar'), leg=document.getElementById('sv_legend');
   var flag=document.getElementById('sv_flag'), refbox=document.getElementById('sv_refbox');
+  var totEl=document.getElementById('sv_totais');
 
   // ---- preço por custo (markup divisor) = o seu PISO ----
   var custoEstoura=(sobre>=1);
@@ -5016,7 +5018,7 @@ function svCalc(){
     price.style.fontSize='17px'; price.innerHTML='Não fecha — passou de 100%';
     sub.textContent=''; bar.innerHTML=''; leg.innerHTML='';
     flag.innerHTML='<div class="badge brr" style="margin-top:10px">Impostos + comissões + lucro = '+Math.round(sobre*100)+'%. Reduza algo abaixo de 100%.</div>';
-    refbox.innerHTML='';
+    refbox.innerHTML=''; if(totEl) totEl.innerHTML='';
     return;
   }
 
@@ -5033,7 +5035,7 @@ function svCalc(){
     svUltimo={impossivel:true};
     price.style.fontSize='16px';
     price.innerHTML=(svMetodo==='valor')?'Informe quanto o cliente valoriza':'Informe quanto a concorrência cobra';
-    sub.textContent=''; bar.innerHTML=''; leg.innerHTML=''; flag.innerHTML='';
+    sub.textContent=''; bar.innerHTML=''; leg.innerHTML=''; flag.innerHTML=''; if(totEl) totEl.innerHTML='';
     refbox.innerHTML=(pcusto>0)?'<div style="border-top:1px dashed var(--border);margin-top:10px;padding-top:8px;font-size:11px;color:var(--t3)">Seu piso por custo é '+fR(pcusto)+'.</div>':'';
     return;
   }
@@ -5047,13 +5049,33 @@ function svCalc(){
   price.style.fontSize='30px';
   price.innerHTML=fR(pv)+(svBase==='unidade'?' <span style="font-size:11px;color:var(--t2)">/ un.</span>':'');
   var s='';
-  if(svBase==='unidade'&&qtd>0) s='Total ('+qtd+' un.): '+fR(precoTotal);
+  if(svBase==='unidade'&&qtd>0) s=qtd+' unidades neste serviço';
   sub.textContent=s;
 
   function seg(c,w){return '<span style="background:'+c+';width:'+Math.max(0,w/pv*100)+'%"></span>';}
   bar.innerHTML=seg('#26477A',impR)+seg('#5e7aa0',comR)+seg('#8fa3c0',cd)+seg('#b8952a',(lucR>0?lucR:0));
-  function lg(c,n,v){return '<div class="svlg"><span class="d" style="background:'+c+'"></span><span>'+n+'</span><span class="v">'+fR(v)+'</span></div>';}
+  function lg(c,n,v){return '<div class="svlg"><span class="d" style="background:'+c+'"></span><span>'+n+'</span><span class="v">'+fR(v)+' <span style="color:var(--t3);font-weight:400">'+(pv>0?(v/pv*100).toFixed(0):0)+'%</span></span></div>';}
   leg.innerHTML=lg('#26477A','Impostos',impR)+lg('#5e7aa0','Comissões e taxas',comR)+lg('#8fa3c0','Custo direto',cd)+lg('#b8952a','Seu lucro',lucR);
+
+  // ---- totalizadores do serviço ----
+  var mult=(svBase==='unidade')?(qtd>0?qtd:0):1;
+  if(totEl){
+    if(mult>0){
+      var valorT=pv*mult, cusT=cd*mult, impT=impR*mult, comT=comR*mult, lucT=lucR*mult;
+      var tRow=function(l,v,o){o=o||{};var fs=o.big?'14px':'12px';var lc=o.strong?'var(--text)':'var(--t2)';var vc=o.green?'var(--green)':(o.strong?'var(--text)':'var(--t2)');var fw=(o.strong||o.green)?'700':'400';return '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;font-size:'+fs+'"><span style="color:'+lc+'">'+l+'</span><span style="font-family:var(--mono);font-weight:'+fw+';color:'+vc+'">'+v+'</span></div>';};
+      var head=(svBase==='projeto')?'Totais do projeto':('Totais do serviço — '+qtd+' un.');
+      totEl.innerHTML='<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px">'
+        +'<div style="font-size:9px;color:var(--gold2);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">'+head+'</div>'
+        +tRow('Valor total',fR(valorT),{strong:true,big:true})
+        +tRow('Custo total',fR(cusT),{})
+        +tRow('Impostos totais',fR(impT),{})
+        +tRow('Comissões e taxas',fR(comT),{})
+        +tRow('Lucro total',fR(lucT)+' <span style="color:var(--t3);font-weight:400">('+(marg*100).toFixed(1)+'%)</span>',{green:true,big:true})
+        +'</div>';
+    } else {
+      totEl.innerHTML='<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;font-size:11px;color:var(--t3)">Informe a quantidade de unidades neste serviço (lá em cima) pra ver o valor e o lucro totais.</div>';
+    }
+  }
 
   // ---- selo de margem ----
   var cls=marg<0?'brr':(marg<0.3?'byy':'bgg');
