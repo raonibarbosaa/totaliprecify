@@ -4863,29 +4863,29 @@ function svFormHTML(){
   var volLab = svBase==='unidade'?'Unidades que você entrega por mês':'Serviços que você fecha por mês';
   return '<div class="svgrid">'
     +'<div>'
-      +'<div class="card"><div class="ct">Como cobra</div>'
+      +'<div class="card"><div class="ct">Como cobra'+tip('svq_base','Como você cobra','Define se o preço é por unidade (ponto, peça, hora) ou por projeto fechado. Isso muda o que os campos pedem.','','Ancoragem por ponto = unidade. Reforma fechada = projeto.')+'</div>'
         +'<div class="f">'+seg+'</div>'
-        +'<div class="f sp2" id="sv-qtd-wrap" style="margin-top:8px'+(svBase==='projeto'?';display:none':'')+'"><label>Quantas unidades neste serviço (opcional)</label><input type="text" id="sv_qtd" oninput="svCalc()" placeholder="ex.: 80"></div>'
+        +'<div class="f sp2" id="sv-qtd-wrap" style="margin-top:8px'+(svBase==='projeto'?';display:none':'')+'"><label>Quantas unidades neste serviço (opcional)'+tip('svq_qtd','Quantidade','Quantas unidades este serviço tem. Serve pra calcular o valor total do trabalho (preço unitário vezes a quantidade).','','Obra com 80 pontos de ancoragem = 80.')+'</label><input type="text" id="sv_qtd" oninput="svCalc()" placeholder="ex.: 80"></div>'
       +'</div>'
       +'<div class="card"><div class="ct">Custos diretos</div>'
-        +'<div class="f"><label id="sv-cd-lab">'+cdLab+'</label><input type="text" id="sv_custo" oninput="svCalc()" value="0"></div>'
-        +'<div class="f" style="margin-top:8px"><label>'+volLab+' (rateia o custo fixo)</label><input type="text" id="sv_vol" oninput="svCalc()" value="0"></div>'
+        +'<div class="f"><label id="sv-cd-lab">'+cdLab+tip('svq_custo','Custo direto','O que você gasta de fato pra entregar uma unidade (ou o projeto): material seu, mão de obra direta, deslocamento daquele serviço. O que o cliente paga por fora não entra.','','Por ponto: bucha, parafuso e o tempo do ajudante.')+'</label><input type="text" id="sv_custo" oninput="svCalc()" value="0"></div>'
+        +'<div class="f" style="margin-top:8px"><label>'+volLab+' (rateia o custo fixo)'+tip('svq_vol','Volume mensal','Quantas unidades ou serviços você costuma entregar no mês. O custo fixo do mês é dividido por esse número e entra um pedacinho em cada serviço.','','Faz uns 30 serviços por mês = 30.')+'</label><input type="text" id="sv_vol" oninput="svCalc()" value="0"></div>'
         +'<div class="svinfo" id="sv-fixo-info">Custo fixo do mês: <b>R$ 0,00</b> (vem da aba Custos fixos). Material por conta do cliente não entra aqui.</div>'
       +'</div>'
       +'<div class="card"><div class="ct">O que sai de cada venda (%)</div>'
-        +'<div class="f"><label>Impostos sobre a nota</label><input type="text" id="sv_imp" oninput="svCalc()" value="6"></div>'
-        +'<div class="f" style="margin-top:8px"><label>Comissão sobre a nota (sócio, vendedor)</label><input type="text" id="sv_com" oninput="svCalc()" value="0"></div>'
-        +'<div class="f" style="margin-top:8px"><label>Outras taxas sobre a venda (cartão)</label><input type="text" id="sv_out" oninput="svCalc()" value="0"></div>'
+        +'<div class="f"><label>Impostos sobre a nota'+tip('svq_imp','Impostos','Percentual de imposto que incide sobre a nota (Simples, ISS). Como sai de cada venda, entra dividindo o preço, não somado por fora.','Sua alíquota efetiva, ou pergunte ao contador.','Simples no começo: 6%.')+'</label><input type="text" id="sv_imp" oninput="svCalc()" value="6"></div>'
+        +'<div class="f" style="margin-top:8px"><label>Comissão sobre a nota (sócio, vendedor)'+tip('svq_com','Comissão','Percentual que sai do preço pra quem traz ou executa o serviço: sócio, vendedor, indicação. Por sair de cada venda, entra dividindo o preço.','','Sócio terceirizado leva 40% da nota = 40.')+'</label><input type="text" id="sv_com" oninput="svCalc()" value="0"></div>'
+        +'<div class="f" style="margin-top:8px"><label>Outras taxas sobre a venda (cartão)'+tip('svq_out','Outras taxas','Outros percentuais que saem de cada venda, como taxa de cartão ou de plataforma. Deixe 0 se não tiver.','','Cartão 3% = 3.')+'</label><input type="text" id="sv_out" oninput="svCalc()" value="0"></div>'
         +'<div class="svinfo">Comissão e imposto saem de cada venda, então entram <b>dividindo o preço</b>, não somados por fora.</div>'
       +'</div>'
       +'<div class="card"><div class="ct">Lucro e piso</div>'
-        +'<div class="f"><label>Margem de lucro que você quer (%)</label><input type="text" id="sv_lucro" oninput="svCalc()" value="20"></div>'
-        +'<div class="f" style="margin-top:8px"><label>Preço mínimo / mobilização (R$, opcional)</label><input type="text" id="sv_piso" oninput="svCalc()" value="0"></div>'
+        +'<div class="f"><label>Margem de lucro que você quer (%)'+tip('svq_lucro','Margem de lucro','Quanto você quer que sobre de lucro sobre o preço. No método Custo ela forma o preço; em Valor e Mercado ela define o seu piso de comparação. Em serviço, margem saudável começa em 30%.','','Quer 30% de lucro = 30.')+'</label><input type="text" id="sv_lucro" oninput="svCalc()" value="20"></div>'
+        +'<div class="f" style="margin-top:8px"><label>Preço mínimo / mobilização (R$, opcional)'+tip('svq_piso','Preço mínimo','Um valor em reais abaixo do qual o preço nunca cai, como a mobilização mínima pra deslocar a equipe. Deixe 0 se não usar.','','Mobilização mínima de R$ 2.000.')+'</label><input type="text" id="sv_piso" oninput="svCalc()" value="0"></div>'
       +'</div>'
-      +'<div class="card"><div class="ct">Método</div>'
+      +'<div class="card"><div class="ct">Método'+tip('svq_met','Método de precificação','Custo: o preço sobe a partir do seu custo (é o piso). Valor: você fixa pelo que o cliente valoriza. Mercado: você fixa pelo que o concorrente cobra. Detalhes na aba Como funciona.','','')+'</div>'
         +'<div class="f">'+segM+'</div>'
         +'<div class="svinfo" id="sv-met-note"></div>'
-        +'<div class="f" id="sv-ref-wrap" style="margin-top:8px;display:none"><label id="sv-ref-lab">Preço de referência (R$)</label><input type="text" id="sv_ref" oninput="svCalc()" placeholder="0"></div>'
+        +'<div class="f" id="sv-ref-wrap" style="margin-top:8px;display:none"><label id="sv-ref-lab">Preço de referência (R$)'+tip('svq_ref','Valor de referência','No método Valor é quanto o cliente valoriza o serviço. No Mercado é quanto a concorrência cobra. O número que você colocar vira o preço, e o sistema mostra a margem.','','')+'</label><input type="text" id="sv_ref" oninput="svCalc()" placeholder="0"></div>'
       +'</div>'
     +'</div>'
     +'<div>'
@@ -4896,6 +4896,7 @@ function svFormHTML(){
         +'<div style="margin-top:12px"><div style="font-size:9px;color:var(--t2);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Pra onde vai cada real</div>'
         +'<div class="svbar" id="sv_bar"></div>'
         +'<div id="sv_legend"></div></div>'
+        +'<div id="sv_totais"></div>'
         +'<div id="sv_flag"></div>'
         +'<div id="sv_refbox"></div>'
         +'<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px">'
@@ -5003,6 +5004,7 @@ function svCalc(){
   var price=document.getElementById('sv_price'), sub=document.getElementById('sv_sub');
   var bar=document.getElementById('sv_bar'), leg=document.getElementById('sv_legend');
   var flag=document.getElementById('sv_flag'), refbox=document.getElementById('sv_refbox');
+  var totEl=document.getElementById('sv_totais');
 
   // ---- preço por custo (markup divisor) = o seu PISO ----
   var custoEstoura=(sobre>=1);
@@ -5016,7 +5018,7 @@ function svCalc(){
     price.style.fontSize='17px'; price.innerHTML='Não fecha — passou de 100%';
     sub.textContent=''; bar.innerHTML=''; leg.innerHTML='';
     flag.innerHTML='<div class="badge brr" style="margin-top:10px">Impostos + comissões + lucro = '+Math.round(sobre*100)+'%. Reduza algo abaixo de 100%.</div>';
-    refbox.innerHTML='';
+    refbox.innerHTML=''; if(totEl) totEl.innerHTML='';
     return;
   }
 
@@ -5033,7 +5035,7 @@ function svCalc(){
     svUltimo={impossivel:true};
     price.style.fontSize='16px';
     price.innerHTML=(svMetodo==='valor')?'Informe quanto o cliente valoriza':'Informe quanto a concorrência cobra';
-    sub.textContent=''; bar.innerHTML=''; leg.innerHTML=''; flag.innerHTML='';
+    sub.textContent=''; bar.innerHTML=''; leg.innerHTML=''; flag.innerHTML=''; if(totEl) totEl.innerHTML='';
     refbox.innerHTML=(pcusto>0)?'<div style="border-top:1px dashed var(--border);margin-top:10px;padding-top:8px;font-size:11px;color:var(--t3)">Seu piso por custo é '+fR(pcusto)+'.</div>':'';
     return;
   }
@@ -5047,13 +5049,33 @@ function svCalc(){
   price.style.fontSize='30px';
   price.innerHTML=fR(pv)+(svBase==='unidade'?' <span style="font-size:11px;color:var(--t2)">/ un.</span>':'');
   var s='';
-  if(svBase==='unidade'&&qtd>0) s='Total ('+qtd+' un.): '+fR(precoTotal);
+  if(svBase==='unidade'&&qtd>0) s=qtd+' unidades neste serviço';
   sub.textContent=s;
 
   function seg(c,w){return '<span style="background:'+c+';width:'+Math.max(0,w/pv*100)+'%"></span>';}
   bar.innerHTML=seg('#26477A',impR)+seg('#5e7aa0',comR)+seg('#8fa3c0',cd)+seg('#b8952a',(lucR>0?lucR:0));
-  function lg(c,n,v){return '<div class="svlg"><span class="d" style="background:'+c+'"></span><span>'+n+'</span><span class="v">'+fR(v)+'</span></div>';}
+  function lg(c,n,v){return '<div class="svlg"><span class="d" style="background:'+c+'"></span><span>'+n+'</span><span class="v">'+fR(v)+' <span style="color:var(--t3);font-weight:400">'+(pv>0?(v/pv*100).toFixed(0):0)+'%</span></span></div>';}
   leg.innerHTML=lg('#26477A','Impostos',impR)+lg('#5e7aa0','Comissões e taxas',comR)+lg('#8fa3c0','Custo direto',cd)+lg('#b8952a','Seu lucro',lucR);
+
+  // ---- totalizadores do serviço ----
+  var mult=(svBase==='unidade')?(qtd>0?qtd:0):1;
+  if(totEl){
+    if(mult>0){
+      var valorT=pv*mult, cusT=cd*mult, impT=impR*mult, comT=comR*mult, lucT=lucR*mult;
+      var tRow=function(l,v,o){o=o||{};var fs=o.big?'14px':'12px';var lc=o.strong?'var(--text)':'var(--t2)';var vc=o.green?'var(--green)':(o.strong?'var(--text)':'var(--t2)');var fw=(o.strong||o.green)?'700':'400';return '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;font-size:'+fs+'"><span style="color:'+lc+'">'+l+'</span><span style="font-family:var(--mono);font-weight:'+fw+';color:'+vc+'">'+v+'</span></div>';};
+      var head=(svBase==='projeto')?'Totais do projeto':('Totais do serviço — '+qtd+' un.');
+      totEl.innerHTML='<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px">'
+        +'<div style="font-size:9px;color:var(--gold2);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">'+head+'</div>'
+        +tRow('Valor total',fR(valorT),{strong:true,big:true})
+        +tRow('Custo total',fR(cusT),{})
+        +tRow('Impostos totais',fR(impT),{})
+        +tRow('Comissões e taxas',fR(comT),{})
+        +tRow('Lucro total',fR(lucT)+' <span style="color:var(--t3);font-weight:400">('+(marg*100).toFixed(1)+'%)</span>',{green:true,big:true})
+        +'</div>';
+    } else {
+      totEl.innerHTML='<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;font-size:11px;color:var(--t3)">Informe a quantidade de unidades neste serviço (lá em cima) pra ver o valor e o lucro totais.</div>';
+    }
+  }
 
   // ---- selo de margem ----
   var cls=marg<0?'brr':(marg<0.3?'byy':'bgg');
@@ -5155,9 +5177,20 @@ function svRenderHist(){
     h+='<div class="svhist"><div style="flex:1;min-width:0"><div style="font-family:var(--sans);font-weight:700;color:var(--text);font-size:12px">'+esc(x.descricao||'Serviço')+'</div>'
       +'<div style="font-size:10px;color:var(--t3)">'+data+' · '+(x.base==='unidade'?'por unidade':'por projeto')+' · '+(x.metodo||'custo')+'</div></div>'
       +'<div style="text-align:right"><div style="font-family:var(--mono);font-weight:600;color:var(--text)">'+preco+'</div><div style="font-size:10px;color:var(--green)">margem '+((x.margemReal||0)*100).toFixed(1)+'%</div></div>'
-      +'<button class="btn xs" onclick="svLoadPrec('+i+')">Carregar</button></div>';
+      +'<button class="btn xs" onclick="svLoadPrec('+i+')">Carregar</button>'
+      +(isAdmin()?'<button class="btn xs d" onclick="svDelPrec('+i+')">Excluir</button>':'')+'</div>';
   }
   p.innerHTML='<div class="card"><div class="ct">Histórico de precificações</div>'+h+'</div>';
+}
+function svDelPrec(i){
+  if(!isAdmin()){ svToast('Só o admin pode excluir.'); return; }
+  if(!curEmpresaId) return;
+  var x=precificacoesServ[i]; if(!x) return;
+  if(!window.confirm('Excluir "'+(x.descricao||'esta precificação')+'" do histórico? Isso não tem volta.')) return;
+  var novo=precificacoesServ.slice(); novo.splice(i,1);
+  db.collection('empresas').doc(curEmpresaId).update({precificacoesServ:stripUndefined(novo)})
+    .then(function(){ precificacoesServ=novo; if(curEmpresa) curEmpresa.precificacoesServ=novo; svRenderHist(); svToast('Precificação excluída.'); })
+    .catch(function(e){ console.error('svDelPrec',e); svToast('Erro ao excluir.'); });
 }
 function svLoadPrec(i){
   var x=precificacoesServ[i]; if(!x) return; var n=x.inputs||{};
