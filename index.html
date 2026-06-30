@@ -2122,6 +2122,27 @@ var impProds = [];
 var priceProd = null;
 var priceProdIdx = -1;
 var curMethod = 'markup';
+// ── PRESETS DE MARKETPLACE (e-commerce) ──────────────────────
+// Valores padrão editáveis (modelo 2026). Calibre com o relatório do Bling.
+// com = comissão %; fix = taxa fixa R$ por pedido; antec = antecipação/gateway %;
+// acos = custo de anúncio %; frete = subsídio de frete grátis R$ por pedido.
+var MARKETPLACES = {
+  ml_classico: {nome:'Mercado Livre Clássico', com:13,  fix:6, antec:0,   acos:0, frete:0},
+  ml_premium:  {nome:'Mercado Livre Premium',  com:18,  fix:6, antec:0,   acos:0, frete:0},
+  shopee:      {nome:'Shopee',                 com:20,  fix:4, antec:0,   acos:0, frete:0},
+  amazon:      {nome:'Amazon',                 com:15,  fix:2, antec:0,   acos:0, frete:0},
+  magalu:      {nome:'Magalu',                 com:14,  fix:0, antec:0,   acos:0, frete:0},
+  shein:       {nome:'Shein',                  com:16,  fix:0, antec:0,   acos:0, frete:0},
+  proprio:     {nome:'Site próprio',           com:0,   fix:0, antec:3.5, acos:0, frete:0},
+  custom:      {nome:'Personalizado',          com:0,   fix:0, antec:0,   acos:0, frete:0}
+};
+function aplicaMP(){
+  var sel=document.getElementById('emp_mp'); if(!sel)return;
+  var mp=MARKETPLACES[sel.value]; if(!mp)return;
+  var set=function(id,v){var e=document.getElementById(id);if(e)e.value=v;};
+  if(sel.value!=='custom'){ set('emp_com',mp.com);set('emp_fix',mp.fix);set('emp_antec',mp.antec);set('emp_acos',mp.acos);set('emp_frete',mp.frete); }
+  calcP();
+}
 var concList = [];
 var editIdx = -1;
 var activeTip = null;
@@ -4303,7 +4324,10 @@ function rPreco(){
 }
 
 function openPM(i){priceProd=prods[i];priceProdIdx=i;curMethod='markup';showPM();}
-function selMC(m,el2){curMethod=m;document.querySelectorAll('.mc').forEach(function(c){c.classList.remove('sel');});el2.classList.add('sel');calcP();}
+function selMC(m,el2){curMethod=m;document.querySelectorAll('.mc').forEach(function(c){c.classList.remove('sel');});el2.classList.add('sel');
+  var ef=document.getElementById('ecomFields'),sf=document.getElementById('stdFields');
+  if(ef&&sf){ if(m==='ecom'){ef.style.display='block';sf.style.display='none';} else {ef.style.display='none';sf.style.display='grid';} }
+  calcP();}
 
 function calcP(){
   if(!priceProd)return;
@@ -4321,6 +4345,17 @@ function calcP(){
   var conc2=parseFloat(document.getElementById('pcc').value)||0;
   var per=parseFloat(document.getElementById('ppv').value)||0;
   var mcDes=parseFloat((document.getElementById('pmc')&&document.getElementById('pmc').value)||0)||0;
+  // ── E-COMMERCE: remapeia taxas do marketplace nos slots do motor ──
+  var isEcom=(curMethod==='ecom'), mpFix=0, mpFrete=0;
+  if(isEcom){
+    var gE=function(id){var e=document.getElementById(id);return e?(parseFloat(e.value)||0):0;};
+    com  = gE('emp_com');    // comissão marketplace ocupa o slot "comissão"
+    frtS = gE('emp_acos');   // ACOS (anúncios) ocupa o slot "frete saída"
+    tax  = gE('emp_antec');  // antecipação/gateway ocupa o slot "taxas cartão"
+    mrg  = gE('emp_mrg');    // margem alvo
+    mpFix= gE('emp_fix');    // taxa fixa R$ (numerador)
+    mpFrete=gE('emp_frete'); // frete/subsídio R$ (numerador)
+  }
   // Parâmetros de despesas da empresa
   var despFixPct = parseFloat(params.despesasFixasPct)||0;
   var despVarExtraPct = parseFloat(params.despesasVariaveisPct)||0;
@@ -4344,6 +4379,11 @@ function calcP(){
   var parcelaCusto=1-estrutura;
   // ── MÉTODO DE PRECIFICAÇÃO ──
   if(curMethod==='markup'){pv=parcelaCusto>0?baseAdj/parcelaCusto:0;}
+  else if(curMethod==='ecom'){
+    // Taxas fixas (R$) entram no numerador; margem fecha DEPOIS de tudo.
+    if(parcelaCusto<=0){document.getElementById('pres').innerHTML='<div style="font-size:10px;color:var(--danger);padding:6px">Inviável: a soma de impostos + comissão + ACOS + antecipação + margem ('+((estrutura*100).toFixed(1))+'%) é ≥ 100%. Reduza a margem alvo ou as taxas.</div>';return;}
+    pv=(baseAdj+mpFix+mpFrete)/parcelaCusto;
+  }
   else if(curMethod==='cc'){if(!conc2){document.getElementById('pres').innerHTML='<div style="font-size:10px;color:var(--warn);padding:6px">Informe o preço da concorrência.</div>';return;}pv=conc2;}
   else if(curMethod==='vp'){if(!per){document.getElementById('pres').innerHTML='<div style="font-size:10px;color:var(--warn);padding:6px">Informe o valor percebido.</div>';return;}pv=per;}
   else if(curMethod==='mc'){
@@ -4377,7 +4417,7 @@ function calcP(){
   var csllR = regime==='presumido' ? pv*csllAliq/100 : 0;
   var recLiq=pv-totalImp-fcpPVval-irpjR-csllR;
   var lucroBruto=recLiq-ct;
-  var despOp=pv*(com+frtS+tax+despVarExtraPct)/100;
+  var despOp=pv*(com+frtS+tax+despVarExtraPct)/100 + (isEcom?(mpFix+mpFrete):0);
   var lucroOp=lucroBruto-despOp;
   // IRPJ/CSLL no Lucro Real: calculado sobre lucro operacional (estimativa)
   var irpjRealR = 0, csllRealR = 0;
@@ -4408,7 +4448,7 @@ function calcP(){
     +'<span style="color:var(--t2)">Regime: </span><span style="font-weight:700;color:var(--gold2)">'+regimeName()+'</span>'
     +' &nbsp;·&nbsp; <span style="color:var(--t2)">Tipo: </span>'+tipoBadge(tipoProd)
     +(regime==='simples'?' &nbsp;·&nbsp; <span style="color:var(--t2)">DAS: </span><span style="font-weight:700;color:var(--gold2)">'+dasAplicado+'%</span>':'')
-    +' &nbsp;·&nbsp; <span style="color:var(--t2)">Método: </span><span style="font-weight:700;color:var(--gold2)">'+(curMethod==='markup'?'Markup':curMethod==='cc'?'Concorrência':curMethod==='vp'?'Valor percebido':'MC '+mcDes+'%')+'</span>'
+    +' &nbsp;·&nbsp; <span style="color:var(--t2)">Método: </span><span style="font-weight:700;color:var(--gold2)">'+(curMethod==='markup'?'Markup':curMethod==='ecom'?('E-commerce'+(document.getElementById('emp_mp')?' · '+(MARKETPLACES[document.getElementById('emp_mp').value]||{}).nome:'')):curMethod==='cc'?'Concorrência':curMethod==='vp'?'Valor percebido':'MC '+mcDes+'%')+'</span>'
     +'</div>';
   r+='<div class="pbox">';
   r+=pbr('CUSTO DO PRODUTO (CPV)','','sec');
@@ -4424,7 +4464,15 @@ function calcP(){
   if(regime==='simples'){r+=pbr('DAS ('+dasAplicado+'%)',dasAplicado+'% sobre PV','sub');}
   else{r+=pbr('ICMS nominal',temST?'0% (ST)':alqIntProd+'%','sub');r+=pbr('PIS',pisAplicado+'%','sub');r+=pbr('COFINS',cofinsAplicado+'%','sub');}
   if(regime==='presumido'){r+=pbr('IRPJ (presunção 8% × 15%)',irpjAliq.toFixed(2)+'% sobre PV','sub');r+=pbr('CSLL (presunção 12% × 9%)',csllAliq.toFixed(2)+'% sobre PV','sub');}
-  r+=pbr('Comissão',com+'%','sub');r+=pbr('Frete de saída',frtS+'%','sub');r+=pbr('Taxas de cartão',tax+'%','sub');
+  if(isEcom){
+    r+=pbr('Comissão marketplace',com+'%','sub');
+    if(frtS>0)r+=pbr('ACOS (anúncios)',frtS+'%','sub');
+    if(tax>0)r+=pbr('Antecipação / gateway',tax+'%','sub');
+    if(mpFix>0)r+=pbr('Taxa fixa por pedido',fR(mpFix),'sub');
+    if(mpFrete>0)r+=pbr('Frete / subsídio',fR(mpFrete),'sub');
+  } else {
+    r+=pbr('Comissão',com+'%','sub');r+=pbr('Frete de saída',frtS+'%','sub');r+=pbr('Taxas de cartão',tax+'%','sub');
+  }
   if(despVarExtraPct>0)r+=pbr('Outras desp. variáveis',despVarExtraPct+'%','sub');
   if(curMethod==='mc'){r+=pbr('MC desejada',mcDes+'%','sub');}
   else{r+=pbr('Margem desejada',mrg+'%','sub');}
@@ -4447,7 +4495,16 @@ function calcP(){
   if(regime==='presumido'){r+=pbr('IRPJ ('+irpjAliq.toFixed(2)+'% sobre PV)',fR(irpjR),'sub red');r+=pbr('CSLL ('+csllAliq.toFixed(2)+'% sobre PV)',fR(csllR),'sub red');}
   r+=pbr('= Receita líquida',fR(recLiq)+'  ('+pct(recLiq,pv)+')','tot');
   r+=pbr('(−) CPV','− '+fR(ct),'sec red');r+=pbr('= Lucro bruto',fR(lucroBruto)+'  ('+pct(lucroBruto,pv)+')','tot');
-  r+=pbr('(-) DESPESAS VARIÁVEIS','','sec');r+=pbr('Comissão',fR(pv*com/100),'sub red');r+=pbr('Frete saída',fR(pv*frtS/100),'sub red');r+=pbr('Taxas cartão',fR(pv*tax/100),'sub red');
+  r+=pbr('(-) DESPESAS VARIÁVEIS','','sec');
+  if(isEcom){
+    r+=pbr('Comissão marketplace',fR(pv*com/100),'sub red');
+    if(frtS>0)r+=pbr('ACOS (anúncios)',fR(pv*frtS/100),'sub red');
+    if(tax>0)r+=pbr('Antecipação / gateway',fR(pv*tax/100),'sub red');
+    if(mpFix>0)r+=pbr('Taxa fixa por pedido',fR(mpFix),'sub red');
+    if(mpFrete>0)r+=pbr('Frete / subsídio',fR(mpFrete),'sub red');
+  } else {
+    r+=pbr('Comissão',fR(pv*com/100),'sub red');r+=pbr('Frete saída',fR(pv*frtS/100),'sub red');r+=pbr('Taxas cartão',fR(pv*tax/100),'sub red');
+  }
   if(despVarExtraPct>0)r+=pbr('Outras desp. variáveis',fR(pv*despVarExtraPct/100),'sub red');
   r+=pbr('= LUCRO OPERACIONAL',fR(lucroOp)+'  ('+pct(lucroOp,pv)+')','tot');
   // IRPJ/CSLL no Lucro Real: sobre o lucro
@@ -4505,13 +4562,24 @@ function showPM(){
   var ov=document.createElement('div');ov.className='overlay';ov.id='pmov';
   ov.innerHTML='<div class="modal modal-lg"><div class="mt2">Formação de preço</div>'
     +'<div class="ms2">'+esc(priceProd.desc)+' · Custo total: '+fR(c.ct)+' · Regime: '+regimeName()+'</div>'
-    +'<div class="mcards" style="grid-template-columns:repeat(4,1fr)">'
+    +'<div class="mcards" style="grid-template-columns:repeat(auto-fit,minmax(118px,1fr))">'
     +'<div class="mc sel" onclick="selMC(\'markup\',this)"><div class="mct">1. Markup</div><div class="mcs">PV = Base ajustada ÷ parcela custo</div></div>'
     +'<div class="mc" onclick="selMC(\'cc\',this)"><div class="mct">2. Concorrência</div><div class="mcs">Preço de mercado como referência</div></div>'
     +'<div class="mc" onclick="selMC(\'vp\',this)"><div class="mct">3. Valor percebido</div><div class="mcs">Ancoragem no cliente</div></div>'
     +'<div class="mc" onclick="selMC(\'mc\',this)"><div class="mct">4. Margem de Contribuição</div><div class="mcs">MC% desejada cobre despesas fixas</div></div>'
+    +'<div class="mc" onclick="selMC(\'ecom\',this)"><div class="mct">5. E-commerce</div><div class="mcs">Marketplace: comissão, taxa fixa, ACOS</div></div>'
     +'</div><div class="divider"></div>'
-    +'<div class="g3f" style="margin-bottom:8px">'
+    +'<div id="ecomFields" style="display:none;margin-bottom:8px">'
+    +'<div class="f" style="margin-bottom:8px"><label>Marketplace / canal '+tip('pm_mp','Marketplace','Selecione o canal de venda. Preenche automaticamente comissão e taxa fixa com o padrão do canal (modelo 2026). Ajuste com seus números reais.','Relatório de vendas do Bling por canal.','Mercado Livre Clássico ~13% + taxa fixa em itens baratos.')+'</label><select id="emp_mp" onchange="aplicaMP()"><option value="ml_classico">Mercado Livre Clássico</option><option value="ml_premium">Mercado Livre Premium</option><option value="shopee">Shopee</option><option value="amazon">Amazon</option><option value="magalu">Magalu</option><option value="shein">Shein</option><option value="proprio">Site próprio</option><option value="custom">Personalizado</option></select></div>'
+    +'<div class="g3f">'
+    +'<div class="f"><label>Comissão marketplace (%) '+tip('pm_ecom_com','Comissão do marketplace','Percentual que o canal cobra sobre o preço de venda.','Relatório do Bling / tabela do marketplace.','Mercado Livre Clássico ~13%, Premium ~18%, Shopee ~14–20%.')+'</label><input type="number" id="emp_com" value="13" step="0.1" oninput="calcP()"></div>'
+    +'<div class="f"><label>Taxa fixa por pedido (R$) '+tip('pm_ecom_fix','Taxa fixa por pedido','Valor fixo em reais cobrado por pedido/item, comum em produtos baratos.','Relatório do Bling. ML cobra custo logístico em itens < R$79; Shopee R$4 a R$26 por faixa; Amazon R$2/item.','R$ 6,00 por item abaixo de R$ 79.')+'</label><input type="number" id="emp_fix" value="6" step="0.01" oninput="calcP()"></div>'
+    +'<div class="f"><label>Frete / subsídio grátis (R$) '+tip('pm_ecom_frete','Frete grátis que você banca','Quanto do frete o vendedor absorve por pedido (programa de frete grátis).','Relatório do Bling, coluna de frete por pedido.','R$ 15,00 se você banca esse valor de frete por venda.')+'</label><input type="number" id="emp_frete" value="0" step="0.01" oninput="calcP()"></div>'
+    +'<div class="f"><label>Antecipação / gateway (%) '+tip('pm_ecom_antec','Antecipação e gateway','Taxa de antecipação de recebíveis e/ou gateway de pagamento, em % do PV.','Política de repasse do marketplace / gateway.','Site próprio ~3,5%; marketplaces às vezes já embutem.')+'</label><input type="number" id="emp_antec" value="0" step="0.1" oninput="calcP()"></div>'
+    +'<div class="f"><label>ACOS — anúncios (%) '+tip('pm_ecom_acos','ACOS (custo de anúncio)','Custo de publicidade dentro do marketplace (Ads), em % da receita.','Painel de anúncios do canal. ACOS = gasto em ads ÷ vendas.','10% se você gasta R$ 10 de anúncio a cada R$ 100 vendidos.')+'</label><input type="number" id="emp_acos" value="0" step="0.1" oninput="calcP()"></div>'
+    +'<div class="f"><label>Margem alvo (%) '+tip('pm_ecom_mrg','Margem de lucro alvo','Lucro operacional que você quer DEPOIS de todas as taxas do marketplace. Sobre o PV.','Estratégia comercial.','15% significa 15% de lucro operacional após comissão, taxa fixa, ACOS etc.')+'</label><input type="number" id="emp_mrg" value="15" step="0.1" oninput="calcP()"></div>'
+    +'</div></div>'
+    +'<div class="g3f" id="stdFields" style="margin-bottom:8px">'
     +'<div class="f"><label>Comissão (%) '+tip('pm_com','Comissão de venda','Percentual pago ao vendedor sobre o preço de venda.','Combinado com a equipe comercial ou política interna.','3% se o vendedor recebe R$ 3 a cada R$ 100 vendidos.')+'</label><input type="number" id="pcom" value="3" oninput="calcP()"></div>'
     +'<div class="f"><label>Frete saída (%) '+tip('pm_frt','Frete de saída','Custo de entrega do produto ao cliente, em percentual do PV.','Média histórica das notas de saída ou contrato com transportadora.','2% se o frete médio é R$ 2 a cada R$ 100 vendidos.')+'</label><input type="number" id="pfrts" value="2" oninput="calcP()"></div>'
     +'<div class="f"><label>Taxas cartão (%) '+tip('pm_tax','Taxas de cartão','Percentual cobrado pela maquininha/adquirente na venda em cartão.','Extrato da Cielo, Stone, PagSeguro, etc. Taxa média ponderada débito/crédito.','2% se você paga em média 2% por venda à máquina.')+'</label><input type="number" id="ptax" value="2" oninput="calcP()"></div>'
