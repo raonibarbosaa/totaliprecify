@@ -2122,25 +2122,72 @@ var impProds = [];
 var priceProd = null;
 var priceProdIdx = -1;
 var curMethod = 'markup';
-// ── PRESETS DE MARKETPLACE (e-commerce) ──────────────────────
-// Valores padrão editáveis (modelo 2026). Calibre com o relatório do Bling.
-// com = comissão %; fix = taxa fixa R$ por pedido; antec = antecipação/gateway %;
-// acos = custo de anúncio %; frete = subsídio de frete grátis R$ por pedido.
+// ── PRESETS DE MARKETPLACE (e-commerce) — consciente de faixa ──
+// Fonte: centrais oficiais ML/Shopee/Amazon/Magalu/Shein (modelo 2026).
+// Cada canal tem FAIXAS de preço; comissão (com %) e taxa fixa (fix R$)
+// dependem da faixa em que o PREÇO DE VENDA cai. antec = antecipação/gateway %.
+// O sistema resolve sozinho a faixa consistente ao calcular o preço.
 var MARKETPLACES = {
-  ml_classico: {nome:'Mercado Livre Clássico', com:13,  fix:6, antec:0,   acos:0, frete:0},
-  ml_premium:  {nome:'Mercado Livre Premium',  com:18,  fix:6, antec:0,   acos:0, frete:0},
-  shopee:      {nome:'Shopee',                 com:20,  fix:4, antec:0,   acos:0, frete:0},
-  amazon:      {nome:'Amazon',                 com:15,  fix:2, antec:0,   acos:0, frete:0},
-  magalu:      {nome:'Magalu',                 com:14,  fix:0, antec:0,   acos:0, frete:0},
-  shein:       {nome:'Shein',                  com:16,  fix:0, antec:0,   acos:0, frete:0},
-  proprio:     {nome:'Site próprio',           com:0,   fix:0, antec:3.5, acos:0, frete:0},
-  custom:      {nome:'Personalizado',          com:0,   fix:0, antec:0,   acos:0, frete:0}
+  ml_classico: {nome:'Mercado Livre Clássico', antec:0, frete:0, bands:[
+    {lo:0,   hi:79,       com:13, fix:6},   // item < R$79: custo logístico (piso ~R$6)
+    {lo:79,  hi:Infinity, com:13, fix:0}    // >= R$79: sem taxa fixa
+  ]},
+  ml_premium: {nome:'Mercado Livre Premium', antec:0, frete:0, bands:[
+    {lo:0,   hi:79,       com:18, fix:6},
+    {lo:79,  hi:Infinity, com:18, fix:0}
+  ]},
+  shopee: {nome:'Shopee', antec:0, frete:0, bands:[
+    {lo:0,    hi:7.99,    com:50, fix:0},
+    {lo:8,    hi:79.99,   com:20, fix:4},
+    {lo:80,   hi:99.99,   com:14, fix:16},
+    {lo:100,  hi:199.99,  com:14, fix:20},
+    {lo:200,  hi:Infinity,com:14, fix:26}
+  ]},
+  amazon: {nome:'Amazon (Individual)', antec:1.5, frete:0, bands:[
+    {lo:0, hi:Infinity, com:15, fix:2}      // comissão padrão 15% (varia 10-15% por categoria); R$2/item
+  ]},
+  magalu: {nome:'Magalu', antec:0, frete:0, bands:[
+    {lo:0, hi:Infinity, com:16, fix:0}      // 15-20% por categoria; default 16%
+  ]},
+  shein: {nome:'Shein', antec:0, frete:0, bands:[
+    {lo:0, hi:Infinity, com:16, fix:0}      // 16% (tendência 18-20% em moda)
+  ]},
+  proprio: {nome:'Site próprio', antec:3.5, frete:0, bands:[
+    {lo:0, hi:Infinity, com:0, fix:0}       // só gateway/antecipação
+  ]},
+  custom: {nome:'Personalizado', antec:0, frete:0, bands:[
+    {lo:0, hi:Infinity, com:0, fix:0}
+  ]}
 };
+// Resolve a faixa cujo PV cai dentro do próprio intervalo (ponto fixo do markup).
+// regimeTaxPct = % de impostos sobre o PV; otherPct = ACOS+antecip+margem+desp.var;
+// baseNum = base de custo no numerador. Retorna {com,fix,lo,hi,pv,border}.
+function resolveBandEcom(mpKey, regimeTaxPct, otherPct, baseNum, freteR){
+  var mp = MARKETPLACES[mpKey] || MARKETPLACES.custom;
+  var bands = mp.bands, viaveis = [];
+  for(var i=0;i<bands.length;i++){
+    var b = bands[i];
+    var parc = 1 - ((regimeTaxPct + b.com + otherPct)/100);
+    var pv = parc>0 ? (baseNum + b.fix + freteR)/parc : Infinity;
+    var rec = {com:b.com, fix:b.fix, lo:b.lo, hi:b.hi, pv:pv, parc:parc};
+    if(parc>0){
+      viaveis.push(rec);
+      if(pv >= b.lo && pv <= b.hi) return Object.assign(rec,{border:false}); // faixa consistente
+    }
+  }
+  // Sem faixa consistente (efeito de fronteira): menor PV que cobre o piso da faixa.
+  viaveis.sort(function(a,b){return a.pv-b.pv;});
+  var esc = viaveis.filter(function(r){return r.pv>=r.lo;})[0] || viaveis[viaveis.length-1] || {com:0,fix:0,lo:0,hi:Infinity,pv:0};
+  return Object.assign(esc,{border:true});
+}
 function aplicaMP(){
   var sel=document.getElementById('emp_mp'); if(!sel)return;
   var mp=MARKETPLACES[sel.value]; if(!mp)return;
-  var set=function(id,v){var e=document.getElementById(id);if(e)e.value=v;};
-  if(sel.value!=='custom'){ set('emp_com',mp.com);set('emp_fix',mp.fix);set('emp_antec',mp.antec);set('emp_acos',mp.acos);set('emp_frete',mp.frete); }
+  var custom = sel.value==='custom';
+  var ce=document.getElementById('emp_com'), fe=document.getElementById('emp_fix'), ae=document.getElementById('emp_antec');
+  if(ce) ce.readOnly=!custom;     // comissão e taxa fixa são automáticas (por faixa), exceto Personalizado
+  if(fe) fe.readOnly=!custom;
+  if(ae) ae.value=mp.antec;       // antecipação padrão do canal
   calcP();
 }
 var concList = [];
@@ -4373,6 +4420,23 @@ function calcP(){
   var credIcms=0,credPis=0,credCof=0;
   var icmsNom=temST?0:alqIntProd;
   var fcpPV=(!temST&&(regime==='presumido'||regime==='real'))?(priceProd.alqFCP||0):0;
+  // ── E-COMMERCE consciente de faixa: resolve comissão+taxa fixa pela faixa de preço ──
+  window._ecomBand = null;
+  if(isEcom){
+    var mpKeyR=(document.getElementById('emp_mp')||{}).value||'custom';
+    if(mpKeyR!=='custom'){
+      // % de impostos sobre o PV, independente da comissão
+      var regimeTaxPct=0, baseNumEcom=ct;
+      if(regime==='simples'){ regimeTaxPct=getDAS(tipoProd); }
+      else if(regime==='presumido'){ regimeTaxPct=icmsNom+fcpPV+0.65+3.00+irpjAliq+csllAliq; }
+      else if(regime==='real'){ regimeTaxPct=icmsNom+fcpPV+1.65+7.60; baseNumEcom=ct-(temST?0:cu*alqOrig/100)-cu*1.65/100-cu*7.60/100; }
+      var otherPctR = frtS + tax + mrg + despVarExtraPct; // ACOS+antecip+margem+desp.var
+      var bandR = resolveBandEcom(mpKeyR, regimeTaxPct, otherPctR, baseNumEcom, mpFrete);
+      com = bandR.com; mpFix = bandR.fix; window._ecomBand = bandR;
+      var ceR=document.getElementById('emp_com'); if(ceR) ceR.value=com;
+      var feR=document.getElementById('emp_fix'); if(feR) feR.value=mpFix;
+    }
+  }
   if(regime==='simples'){dasAplicado=getDAS(tipoProd);estrutura=(dasAplicado+com+frtS+tax+mrg+despVarExtraPct)/100;baseAdj=ct;}
   else if(regime==='presumido'){pisAplicado=0.65;cofinsAplicado=3.00;estrutura=(icmsNom+fcpPV+pisAplicado+cofinsAplicado+irpjAliq+csllAliq+com+frtS+tax+mrg+despVarExtraPct)/100;baseAdj=ct;}
   else if(regime==='real'){pisAplicado=1.65;cofinsAplicado=7.60;credIcms=temST?0:cu*alqOrig/100;credPis=cu*pisAplicado/100;credCof=cu*cofinsAplicado/100;estrutura=(icmsNom+fcpPV+pisAplicado+cofinsAplicado+com+frtS+tax+mrg+despVarExtraPct)/100;baseAdj=ct-credIcms-credPis-credCof;}
@@ -4546,6 +4610,20 @@ function calcP(){
     r+='<div style="font-size:9px;color:var(--t3);margin-top:6px;font-style:italic">Nota: IRPJ/CSLL no Lucro Real são estimativas sobre o lucro operacional deste produto. A apuração efetiva depende do LALUR consolidado e despesas dedutíveis do período.</div>';
   }
   document.getElementById('pres').innerHTML=r;
+  // ── Linha "faixa detectada" do e-commerce ──
+  var ebEl=document.getElementById('emp_band');
+  if(ebEl){
+    if(isEcom){
+      var mpK=(document.getElementById('emp_mp')||{}).value||'custom';
+      if(mpK==='custom'){ ebEl.innerHTML='Canal <b>Personalizado</b> — você define a comissão e a taxa fixa.'; }
+      else if(window._ecomBand){
+        var bd=window._ecomBand;
+        var faixaTxt=(bd.hi===Infinity)?('acima de '+fR(bd.lo)):(fR(bd.lo)+' a '+fR(bd.hi));
+        ebEl.innerHTML='Faixa detectada: <b style="color:var(--gold2)">'+faixaTxt+'</b> &rarr; comissão <b>'+bd.com+'%</b> + taxa fixa <b>'+fR(bd.fix)+'</b>'
+          +(bd.border?'<br><span style="color:var(--warn)">&#9888; Efeito de fronteira: o preço caiu no limite entre faixas. Confira se vale subir/baixar de faixa.</span>':'');
+      } else { ebEl.innerHTML=''; }
+    } else { ebEl.innerHTML=''; }
+  }
   var sb=document.getElementById('savebtn');
   if(sb){sb.style.display='block';sb.onclick=function(){
     if(priceProdIdx<0||priceProdIdx>=prods.length)return;
@@ -4572,13 +4650,15 @@ function showPM(){
     +'<div id="ecomFields" style="display:none;margin-bottom:8px">'
     +'<div class="f" style="margin-bottom:8px"><label>Marketplace / canal '+tip('pm_mp','Marketplace','Selecione o canal de venda. Preenche automaticamente comissão e taxa fixa com o padrão do canal (modelo 2026). Ajuste com seus números reais.','Relatório de vendas do Bling por canal.','Mercado Livre Clássico ~13% + taxa fixa em itens baratos.')+'</label><select id="emp_mp" onchange="aplicaMP()"><option value="ml_classico">Mercado Livre Clássico</option><option value="ml_premium">Mercado Livre Premium</option><option value="shopee">Shopee</option><option value="amazon">Amazon</option><option value="magalu">Magalu</option><option value="shein">Shein</option><option value="proprio">Site próprio</option><option value="custom">Personalizado</option></select></div>'
     +'<div class="g3f">'
-    +'<div class="f"><label>Comissão marketplace (%) '+tip('pm_ecom_com','Comissão do marketplace','Percentual que o canal cobra sobre o preço de venda.','Relatório do Bling / tabela do marketplace.','Mercado Livre Clássico ~13%, Premium ~18%, Shopee ~14–20%.')+'</label><input type="number" id="emp_com" value="13" step="0.1" oninput="calcP()"></div>'
-    +'<div class="f"><label>Taxa fixa por pedido (R$) '+tip('pm_ecom_fix','Taxa fixa por pedido','Valor fixo em reais cobrado por pedido/item, comum em produtos baratos.','Relatório do Bling. ML cobra custo logístico em itens < R$79; Shopee R$4 a R$26 por faixa; Amazon R$2/item.','R$ 6,00 por item abaixo de R$ 79.')+'</label><input type="number" id="emp_fix" value="6" step="0.01" oninput="calcP()"></div>'
+    +'<div class="f"><label>Comissão (% — auto p/ faixa) '+tip('pm_ecom_com','Comissão do marketplace','Percentual que o canal cobra sobre o preço de venda. Preenchido automaticamente conforme a FAIXA de preço do produto (ex.: Shopee 50/20/14%). Só editável no canal Personalizado.','Tabela oficial do marketplace (2026).','Mercado Livre ~13% Clássico / ~18% Premium; Shopee 14–20% por faixa.')+'</label><input type="number" id="emp_com" value="13" step="0.1" readonly oninput="calcP()"></div>'
+    +'<div class="f"><label>Taxa fixa/pedido (R$ — auto) '+tip('pm_ecom_fix','Taxa fixa por pedido','Valor fixo cobrado por pedido. Preenchido automaticamente pela faixa: Shopee R$4 a R$26; ML ~R$6 em itens < R$79; Amazon R$2/item. Só editável no canal Personalizado.','Tabela oficial do marketplace (2026).','R$ 16,00 na faixa R$80–99,99 da Shopee.')+'</label><input type="number" id="emp_fix" value="6" step="0.01" readonly oninput="calcP()"></div>'
     +'<div class="f"><label>Frete / subsídio grátis (R$) '+tip('pm_ecom_frete','Frete grátis que você banca','Quanto do frete o vendedor absorve por pedido (programa de frete grátis).','Relatório do Bling, coluna de frete por pedido.','R$ 15,00 se você banca esse valor de frete por venda.')+'</label><input type="number" id="emp_frete" value="0" step="0.01" oninput="calcP()"></div>'
     +'<div class="f"><label>Antecipação / gateway (%) '+tip('pm_ecom_antec','Antecipação e gateway','Taxa de antecipação de recebíveis e/ou gateway de pagamento, em % do PV.','Política de repasse do marketplace / gateway.','Site próprio ~3,5%; marketplaces às vezes já embutem.')+'</label><input type="number" id="emp_antec" value="0" step="0.1" oninput="calcP()"></div>'
     +'<div class="f"><label>ACOS — anúncios (%) '+tip('pm_ecom_acos','ACOS (custo de anúncio)','Custo de publicidade dentro do marketplace (Ads), em % da receita.','Painel de anúncios do canal. ACOS = gasto em ads ÷ vendas.','10% se você gasta R$ 10 de anúncio a cada R$ 100 vendidos.')+'</label><input type="number" id="emp_acos" value="0" step="0.1" oninput="calcP()"></div>'
     +'<div class="f"><label>Margem alvo (%) '+tip('pm_ecom_mrg','Margem de lucro alvo','Lucro operacional que você quer DEPOIS de todas as taxas do marketplace. Sobre o PV.','Estratégia comercial.','15% significa 15% de lucro operacional após comissão, taxa fixa, ACOS etc.')+'</label><input type="number" id="emp_mrg" value="15" step="0.1" oninput="calcP()"></div>'
-    +'</div></div>'
+    +'</div>'
+    +'<div id="emp_band" style="font-size:9.5px;color:var(--t2);margin-top:6px"></div>'
+    +'</div>'
     +'<div class="g3f" id="stdFields" style="margin-bottom:8px">'
     +'<div class="f"><label>Comissão (%) '+tip('pm_com','Comissão de venda','Percentual pago ao vendedor sobre o preço de venda.','Combinado com a equipe comercial ou política interna.','3% se o vendedor recebe R$ 3 a cada R$ 100 vendidos.')+'</label><input type="number" id="pcom" value="3" oninput="calcP()"></div>'
     +'<div class="f"><label>Frete saída (%) '+tip('pm_frt','Frete de saída','Custo de entrega do produto ao cliente, em percentual do PV.','Média histórica das notas de saída ou contrato com transportadora.','2% se o frete médio é R$ 2 a cada R$ 100 vendidos.')+'</label><input type="number" id="pfrts" value="2" oninput="calcP()"></div>'
